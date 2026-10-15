@@ -1,0 +1,84 @@
+{
+  "id": "context-pacer",
+  "name": "Context Pacer",
+  "description": "Paces agents that gather with tools: a status line on each gathering result, with nudges to write notes and to finish from them. Never blocks a tool.",
+  "categories": [
+    "context"
+  ],
+  "contracts": {
+    "agentToolResultMiddleware": [
+      "openclaw"
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agents": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Agent ids to pace. Empty (the default) means the plugin does nothing until configured.",
+        "default": []
+      },
+      "gatherTools": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "description": "Tools whose results count as gathering and get the status line.",
+        "default": [
+          "web_search",
+          "web_fetch"
+        ]
+      },
+      "noteTools": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "description": "Tools that can write a note.",
+        "default": [
+          "write",
+          "edit"
+        ]
+      },
+      "notesPath": {
+        "type": "string",
+        "minLength": 1,
+        "description": "A write counts as a note when its path contains this segment.",
+        "default": "notes/"
+      },
+      "noteEvery": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 20,
+        "description": "Ask for a note once this many gathering results pass without one.",
+        "default": 3
+      },
+      "wrapUpAt": {
+        "type": "number",
+        "minimum": 0.2,
+        "maximum": 0.95,
+        "description": "Share of the context budget at which the line says to finish from the notes.",
+        "default": 0.6
+      },
+      "maxRuns": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "Most runs tracked at once; the oldest is dropped beyond this.",
+        "default": 50
+      }
+    }
+  }
+}
