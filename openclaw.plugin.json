@@ -1,7 +1,7 @@
 {
   "id": "context-pacer",
   "name": "Context Pacer",
-  "description": "Paces agents that gather with tools: a status line on each gathering result, with nudges to write notes and to finish from them. Never blocks a tool.",
+  "description": "Paces agents that gather with tools: a status line on each gathering result, with nudges to write notes and to finish from them, and optionally large results moved to files. Never blocks a tool.",
   "categories": [
     "context"
   ],
@@ -32,52 +32,105 @@
           "type": "string",
           "minLength": 1
         },
-        "minItems": 1,
         "description": "Tools whose results count as gathering and get the status line.",
         "default": [
           "web_search",
           "web_fetch"
-        ]
+        ],
+        "minItems": 1
       },
-      "noteTools": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        },
-        "minItems": 1,
-        "description": "Tools that can write a note.",
-        "default": [
-          "write",
-          "edit"
-        ]
+      "notes": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Note tracking. Off unless pathContains is set.",
+        "properties": {
+          "pathContains": {
+            "type": "string",
+            "minLength": 1,
+            "description": "A write counts as a note when its path contains this text. No default: unset turns note tracking off."
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Tools that can write a note.",
+            "default": [
+              "write",
+              "edit"
+            ],
+            "minItems": 1
+          },
+          "everyResults": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Ask for a note once this many gathering results pass without one.",
+            "default": 3
+          }
+        }
       },
-      "notesPath": {
-        "type": "string",
-        "minLength": 1,
-        "description": "A write counts as a note when its path contains this segment.",
-        "default": "notes/"
-      },
-      "noteEvery": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 20,
-        "description": "Ask for a note once this many gathering results pass without one.",
-        "default": 3
-      },
-      "wrapUpAt": {
+      "wrapUpContextFraction": {
         "type": "number",
         "minimum": 0.2,
         "maximum": 0.95,
-        "description": "Share of the context budget at which the line says to finish from the notes.",
+        "description": "Share of the context budget at which the line says to stop gathering and write the answer.",
         "default": 0.6
       },
-      "maxRuns": {
+      "maxTrackedRuns": {
         "type": "integer",
         "minimum": 1,
         "maximum": 1000,
-        "description": "Most runs tracked at once; the oldest is dropped beyond this.",
+        "description": "Most runs tracked in memory at once; the oldest is dropped beyond this.",
         "default": 50
+      },
+      "offload": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Save large gathering results to the agent's workspace and show an excerpt with the file's path instead.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Turn offload on. Applies only to agents that are unsandboxed or have workspaceAccess \"rw\".",
+            "default": false
+          },
+          "thresholdChars": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 100000,
+            "description": "Offload a result once the text the model would see exceeds this many characters.",
+            "default": 6000
+          },
+          "excerptChars": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 20000,
+            "description": "Characters of the saved result shown in its place; at most thresholdChars minus 1,000.",
+            "default": 4000
+          },
+          "directory": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!\\.+(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.+(?:/|$))[A-Za-z0-9._-]+)*/?$",
+            "description": "Workspace-relative folder for saved results, with one subfolder per run. It must be inside the workspace so a sandboxed agent can read it.",
+            "default": ".context-pacer"
+          },
+          "maxRuns": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Run folders kept in the directory; older ones the pacer created are deleted.",
+            "default": 10
+          },
+          "maxBytesPerRun": {
+            "type": "integer",
+            "minimum": 1000000,
+            "maximum": 500000000,
+            "description": "Most bytes saved per run; past this, results stay in context unchanged.",
+            "default": 25000000
+          }
+        }
       }
     }
   }

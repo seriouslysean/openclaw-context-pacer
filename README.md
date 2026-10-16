@@ -1,61 +1,76 @@
 # openclaw-context-pacer
 
-An [OpenClaw](https://docs.openclaw.ai) plugin (id `context-pacer`) that paces agents that gather with tools, such as research, browsing or file exploration. They keep notes and finish from them instead of gathering until their context overflows.
+An [OpenClaw](https://docs.openclaw.ai) plugin (id `context-pacer`) for agents that gather with tools: web research, browsing, file exploration. It helps them keep notes and finish from those notes, instead of gathering until their context overflows.
 
-After each gathering result (by default `web_search` and `web_fetch`), the pacer appends one status line before the result reaches the model:
+It never blocks a tool. It changes only what the model sees after a tool has run.
+
+**Status:** experimental. Built and tested against OpenClaw 2026.10.3. Not published on ClawHub or npm; install it from source. What has and hasn't been checked on a live gateway is listed in [docs/verification.md](docs/verification.md).
+
+## What it does
+
+**A status line on every gathering result.** By default the gathering tools are `web_search` and `web_fetch`, and the line is added before the result reaches the model:
 
 ```text
 [pacer] 7 gathering results so far · last note 3 results ago · context about 48% of budget. Add what these sources showed to your notes before gathering more.
 ```
 
-It escalates in two steps:
-- once `noteEvery` gathering results pass without a note, it asks for one;
-- once the run's prompt reaches `wrapUpAt` of the context budget, it says to stop gathering and write the answer from the notes.
+The line escalates in two steps:
+1. With note tracking on (`notes.pathContains` set), after `notes.everyResults` results with no note, it asks for one. Without it, the line leaves notes out.
+2. Once the prompt reaches `wrapUpContextFraction` of the run's context budget, it says to stop gathering and write the answer.
+
+**Offload (optional, off by default).** A large result is saved to a file in the agent's workspace. The model gets an excerpt and the file's path in its place:
+
+```text
+[pacer] Showing the first 3,962 of 6,337 characters. The full result is saved at .context-pacer/2026-10-15-3f9c1a2b/004-web_fetch.md: read it with offset and limit if you need more.
+```
+
+Nothing is dropped: the agent can `read` the rest when it needs it. Offload applies only to agents that can read their workspace: unsandboxed, or sandboxed with `workspaceAccess: "rw"`. In a replay of 247 stored results from one research agent, offload cut the text the model saw by about 65%. That measures size only, not answer quality.
+
+## Install
+
+From a checkout:
+
+```sh
+openclaw plugins install --link --force /path/to/openclaw-context-pacer
+openclaw plugins enable context-pacer
+openclaw config set plugins.entries.context-pacer.config '{"agents":["<agent id>"],"offload":{"enabled":true}}' --strict-json
+openclaw gateway restart
+```
+
+- `--force` confirms a source that isn't on ClawHub.
+- Installed plugins can rewrite tool results only when they're explicitly enabled, which is what `plugins enable` does.
+- The plugin does nothing until `agents` lists at least one agent id.
+
+To check that it loaded, run `openclaw plugins inspect context-pacer --runtime --json`.
+
+To turn it off, run `openclaw plugins disable context-pacer` and restart. Saved files stay in each agent's `.context-pacer/` folder until you delete them.
 
 ## Bounds
 
-- **Scoped:** only agents listed in `agents` are paced. The default is none, so the plugin does nothing until configured. Results for every other agent pass through untouched, and only results from `gatherTools` get a line.
-- **Never blocks:** it doesn't veto, cap or rewrite tool calls. It only appends a text block; the tool's own content is unchanged.
-- **Fails open:** any error leaves the result as it was, with a warning in the gateway log.
-- **Agnostic:** it uses the context budget and usage OpenClaw reports for the run (`contextTokenBudget`, `llm_output` usage), so no model name or window size is hard-coded. When usage hasn't been reported, it estimates from the per-call request size (`model_call_ended.requestPayloadBytes` / 4) and marks the share "(approx)". That overestimates, so the wrap-up nudge comes early rather than late. With neither, the line leaves out the context share.
-- **Small:** per-run counters only, at most `maxRuns` runs held at once and dropped at `agent_end`. No network, no files, no stored state.
+- **Scoped:** only results from agents in `agents` change, and only results from `gatherTools`.
+- **Never blocks:** it doesn't veto, cap or rewrite tool calls.
+- **Fails open:** any error leaves the result as it was and logs a warning. If a save fails, the full result stays in context.
+- **Agnostic:** context share comes from the budget OpenClaw resolves for the run, so no model name or window size is hard-coded.
+- **No conversation access by default:** it reads only call metadata, and estimates prompt size from the request's size. Grant `hooks.allowConversationAccess` to use the reported token counts instead (see [Configuration](docs/configuration.md#reported-usage)).
+- **Keeps the untrusted-content label:** excerpts and saved files of web content carry OpenClaw's warning and markers.
+- **Doesn't hide loops:** OpenClaw's loop detection records each outcome before this plugin runs.
 
-## Config (`plugins.entries.context-pacer.config`)
+## Docs
 
-| Key | Default | Meaning |
-|---|---|---|
-| `agents` | `[]` | Agent ids to pace; empty means off |
-| `gatherTools` | `["web_search", "web_fetch"]` | Tools whose results count as gathering and get the line |
-| `noteTools` | `["write", "edit"]` | Tools that can write a note |
-| `notesPath` | `"notes/"` | A write counts as a note when its path contains this |
-| `noteEvery` | `3` | Ask for a note after this many gathering results without one (1–20) |
-| `wrapUpAt` | `0.6` | Share of the context budget at which to say "finish from your notes" (0.2–0.95) |
-| `maxRuns` | `50` | Most runs tracked at once (1–1000) |
-
-## How it hooks in
-
-- `api.registerAgentToolResultMiddleware` (manifest contract `agentToolResultMiddleware: ["openclaw"]`) rewrites a result after the tool runs and before the model sees it ([host hooks](https://docs.openclaw.ai/plugins/sdk-overview/host-hooks)). Installed plugins need the contract plus explicit enablement.
-- `model_call_started` and `llm_output` supply the run's `contextTokenBudget` and prompt usage ([prompt and session hooks](https://docs.openclaw.ai/plugins/hooks/prompt-and-session)).
-- `agent_end` drops the run's counters.
-
-## Not yet verified
-
-- Whether `llm_output` fires per model call or once per run; the request-size fallback covers the second case.
-- Whether `model_call_ended.requestPayloadBytes` is populated for embedded runs.
-- The plugin has not been loaded by an OpenClaw gateway yet.
-- Whether `model_call_started` carries `runId` and the agent id for embedded runs.
-- Whether the hooks above need a manifest declaration beyond the middleware contract.
+- [Configuration](docs/configuration.md): every key, with examples for agents other than web research.
+- [How it works](docs/how-it-works.md): the hooks it uses, Tool Search, offload, and measurements.
+- [Verification](docs/verification.md): what's tested, what isn't, and how to check it on your gateway.
 
 ## Develop
 
+Requires Node 24.16 or later.
+
 ```sh
-npm test    # node --test, Node 24.16+ (built-in TypeScript type stripping)
+npm test    # node --test, using Node's built-in TypeScript support
 ```
 
-Install from a checkout with `openclaw plugins install --link <path to this folder>`. Then enable it, set `agents`, and restart the gateway:
+CI also typechecks against the OpenClaw version in `package.json`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-```json5
-{ plugins: { entries: { "context-pacer": { enabled: true, config: { agents: ["<agent id>"] } } } } }
-```
+## License
 
-To pace something other than web research, set `gatherTools` (for example `["read", "exec"]` for a file-exploring agent) and `notesPath` to wherever that agent keeps notes.
+[MIT](LICENSE)

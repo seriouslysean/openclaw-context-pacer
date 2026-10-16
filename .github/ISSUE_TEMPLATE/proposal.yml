@@ -1,0 +1,34 @@
+name: Propose a change
+description: Something the plugin should do that it doesn't, or a question about why it works the way it does.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue will be published, and no test can gate it.**
+
+        Remove anything about your setup before filing: agent names, room or chat ids, hostnames, paths, and what the agent was researching.
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What the plugin should do
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: The problem behind it
+      description: What goes wrong today, or what is being worked around. The reason outlives any diff, so record it even if the proposal is declined.
+    validations:
+      required: true
+  - type: textarea
+    id: fit
+    attributes:
+      label: How it stays agnostic
+      description: Optional. How it works for any agent and model, with no names or limits hard-coded.
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Before filing
+      options:
+        - label: I have read this body back. It names no agent, person, machine, room or path from my setup.
+          required: true

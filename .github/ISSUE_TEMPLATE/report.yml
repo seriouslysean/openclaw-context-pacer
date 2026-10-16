@@ -1,0 +1,45 @@
+name: Report wrong behaviour
+description: Something the plugin did that it shouldn't have, or didn't do when it should.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue will be published, and no test can gate it.**
+
+        Remove anything about your setup before filing: agent names, room or chat ids, hostnames, paths, and what the agent was researching. Tool results and transcripts can carry all of these. Describe the failure, not the setup.
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The OpenClaw version (`openclaw --version`) and this plugin's commit or version.
+    validations:
+      required: true
+  - type: textarea
+    id: behaviour
+    attributes:
+      label: What happened
+      description: What the model saw, or what the plugin did, rather than what you think caused it.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        The tool result, gateway log line or plugin config that shows it, redacted. A failure that can be
+        reproduced can be turned into a test, and every fix here ships with one.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Before filing
+      options:
+        - label: I have read this body back. It names no agent, person, machine, room or path from my setup.
+          required: true
