@@ -21,10 +21,17 @@
     "node": ">=24.16"
   },
   "scripts": {
-    "test": "node --test 'test/*.test.ts'"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=80 --test-coverage-branches=85 --test-coverage-functions=80 'test/*.test.ts'"
   },
   "peerDependencies": {
     "openclaw": ">=2026.10.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "openclaw": "2026.10.3",
+    "oxlint": "1.88.0",
+    "typescript": "7.0.2"
   },
   "openclaw": {
     "extensions": [
