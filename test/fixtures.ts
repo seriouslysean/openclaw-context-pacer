@@ -53,13 +53,19 @@ export function searchPayload(results = 5) {
   };
 }
 
+/** A tool result as OpenClaw types it for middleware: text blocks and structured details. */
+export interface TextResult {
+  content: { type: 'text'; text: string }[];
+  details: unknown;
+}
+
 /** A direct call's result: the payload as JSON text, and the payload itself as details. */
-export function direct(payload: object) {
+export function direct(payload: object): TextResult {
   return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }], details: payload };
 }
 
 /** The same result after Tool Search's `tool_call`: everything serialized again, then wrapped and capped at 20,000. */
-export function viaToolCall(name: string, payload: object) {
+export function viaToolCall(name: string, payload: object): TextResult {
   const inner = direct(payload);
   const tool = { id: `openclaw:core:${name}`, name, source: 'openclaw' };
   let json = JSON.stringify({ tool, result: inner }, null, 2);
@@ -73,7 +79,7 @@ export function viaToolCall(name: string, payload: object) {
 }
 
 /** A failed `tool_call`, as stored for a 403. */
-export const failedCall = {
+export const failedCall: TextResult = {
   content: [{ type: 'text', text: 'Web fetch failed (403)' }],
   details: { status: 'error', tool: 'tool_call', error: 'Web fetch failed (403)' },
 };
