@@ -21,6 +21,8 @@
     "node": ">=24.16"
   },
   "scripts": {
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=80 --test-coverage-branches=85 --test-coverage-functions=80 'test/*.test.ts'"
   },

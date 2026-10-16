@@ -3,23 +3,35 @@ import { wrapExternalContent } from 'openclaw/plugin-sdk/security-runtime';
 import { offload, runFolder } from './offload.ts';
 import { Pacer, appendStatus, resolveConfig } from './pacer.ts';
 import { offloadReadable } from './sandbox.ts';
-import { isErrorResult, resolveInner } from './tool-result.ts';
+import { isErrorResult, isRecord, resolveInner } from './tool-result.ts';
 
-type Usage = { input?: number; cacheRead?: number; cacheWrite?: number };
-type Ctx = { agentId?: string; runId?: string; contextTokenBudget?: number };
+interface Usage {
+  input?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+}
+
+interface Ctx {
+  agentId?: string;
+  runId?: string;
+  contextTokenBudget?: number;
+}
 
 const PLUGIN_ID = 'context-pacer';
 
 function promptTokens(usage: Usage | undefined): number | undefined {
-  if (!usage) return undefined;
+  if (!usage) {
+    return undefined;
+  }
   const total = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
   return total > 0 ? total : undefined;
 }
 
 function hasConversationAccess(config: unknown): boolean {
-  const entry = (config as { plugins?: { entries?: Record<string, { hooks?: { allowConversationAccess?: unknown } }> } })
-    ?.plugins?.entries?.[PLUGIN_ID];
-  return entry?.hooks?.allowConversationAccess === true;
+  const plugins = isRecord(config) && isRecord(config.plugins) ? config.plugins : {};
+  const entries = isRecord(plugins.entries) ? plugins.entries : {};
+  const entry = isRecord(entries[PLUGIN_ID]) ? entries[PLUGIN_ID] : {};
+  return isRecord(entry.hooks) && entry.hooks.allowConversationAccess === true;
 }
 
 // Sources OpenClaw's wrapper names; anything else is labelled "unknown".
@@ -38,7 +50,9 @@ export default definePluginEntry({
     // Offload only where the agent can open what it is pointed to; otherwise results pass through with the line only.
     const unreadableWarned = new Set<string>();
     const readable = (agentId: string): boolean => {
-      if (offloadReadable(api.config, agentId)) return true;
+      if (offloadReadable(api.config, agentId)) {
+        return true;
+      }
       if (!unreadableWarned.has(agentId)) {
         unreadableWarned.add(agentId);
         warn(`offload skipped for agent "${agentId}": its sandbox can't read the workspace (needs workspaceAccess "rw")`);
@@ -74,7 +88,9 @@ export default definePluginEntry({
       });
       api.on('agent_end', (event: { runId?: string }, ctx: Ctx) => {
         const runId = event?.runId ?? ctx?.runId;
-        if (runId) pacer.end(runId);
+        if (runId) {
+          pacer.end(runId);
+        }
       });
     }
 
@@ -86,10 +102,14 @@ export default definePluginEntry({
         try {
           const runId = ctx.runId;
           const agentId = ctx.agentId;
-          if (!runId || !agentId || !pacer.applies(agentId)) return undefined;
+          if (!runId || !agentId || !pacer.applies(agentId)) {
+            return undefined;
+          }
           const inner = resolveInner(event.toolName, event.args, event.result);
           const line = pacer.onToolResult(runId, inner.name, inner.args);
-          if (!line) return undefined;
+          if (!line) {
+            return undefined;
+          }
           let result = event.result;
           const failed = event.isError === true || isErrorResult(event.result);
           if (pacer.config.offload.enabled && inner.result && !failed && readable(agentId)) {
@@ -103,7 +123,9 @@ export default definePluginEntry({
                 inner: inner.result,
                 reserve: (bytes) => pacer.reserveBytes(runId, bytes),
               });
-              if (done) result = { ...event.result, content: done.content };
+              if (done) {
+                result = { ...event.result, content: done.content };
+              }
             } catch (error) {
               warn(`kept a ${inner.name} result in context, could not save it: ${String(error)}`);
             }

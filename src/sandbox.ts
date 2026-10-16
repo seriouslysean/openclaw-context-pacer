@@ -7,23 +7,24 @@
  * the agent's main one, so it is treated as sandboxed. Sandboxes required by a person's role are not visible in
  * config and are not detected here.
  */
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
+import { isRecord } from './tool-result.ts';
 
 function sandboxSetting(config: unknown, agentId: string, key: string): unknown {
   const agents = isRecord(config) && isRecord(config.agents) ? config.agents : {};
   const entries = isRecord(agents.entries) ? agents.entries : {};
   const entry = isRecord(entries[agentId]) ? entries[agentId] : {};
   const own = isRecord(entry.sandbox) ? entry.sandbox[key] : undefined;
-  if (own !== undefined) return own;
+  if (own !== undefined) {
+    return own;
+  }
   const defaults = isRecord(agents.defaults) && isRecord(agents.defaults.sandbox) ? agents.defaults.sandbox : {};
   return defaults[key];
 }
 
 export function offloadReadable(config: unknown, agentId: string): boolean {
   const mode = sandboxSetting(config, agentId, 'mode') ?? 'off';
-  if (mode === 'off') return true;
+  if (mode === 'off') {
+    return true;
+  }
   return (sandboxSetting(config, agentId, 'workspaceAccess') ?? 'none') === 'rw';
 }

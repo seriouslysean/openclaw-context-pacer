@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node"],
+  "options": {
+    "denyWarnings": true,
+    "reportUnusedDisableDirectives": "error"
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "rules": {
+    "curly": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-nested-ternary": "error",
+    "no-inline-comments": "error",
+    "prefer-const": "error",
+    "no-var": "error",
+    "no-underscore-dangle": "warn",
+    "preserve-caught-error": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-at": "error",
+    "unicorn/prefer-string-slice": "error",
+    "unicorn/no-array-reverse": "error",
+    "unicorn/prefer-string-replace-all": "warn",
+    "unicorn/prefer-array-flat-map": "warn",
+    "unicorn/prefer-object-from-entries": "warn",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/consistent-type-assertions": ["error", { "assertionStyle": "never" }],
+    "typescript/consistent-type-definitions": ["error", "interface"],
+    "import/no-cycle": "error",
+    "import/first": "error",
+    "import/no-duplicates": "error",
+    "import/default": "off",
+    "import/no-named-as-default-member": "off",
+    "promise/catch-or-return": "error"
+  },
+  "overrides": [
+    {
+      "files": ["test/**"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    }
+  ]
+}

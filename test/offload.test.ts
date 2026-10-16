@@ -6,7 +6,7 @@ import { after, test } from 'node:test';
 import { GITIGNORE, SENTINEL, excerpt, offload, runFolder } from '../src/offload.ts';
 import { resolveConfig } from '../src/pacer.ts';
 import { resolveInner } from '../src/tool-result.ts';
-import { direct, fetchPayload, page, searchPayload, viaToolCall, wrapLikeOpenClaw } from './fixtures.ts';
+import { defined, direct, fetchPayload, page, searchPayload, viaToolCall, wrapLikeOpenClaw } from './fixtures.ts';
 
 const roots: string[] = [];
 after(() => Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))));
@@ -36,11 +36,11 @@ test('a small result passes unchanged', async () => {
 test('a wrapped search that fits the excerpt is shown whole, readable, and not saved', async () => {
   const ws = await workspace();
   const original = viaToolCall('web_search', searchPayload());
-  const done = (await offload(config, wrap, request(ws, 'web_search', original)))!;
+  const done = defined(await offload(config, wrap, request(ws, 'web_search', original)));
   assert.equal(done.savedPath, undefined);
   assert.equal(done.content.length, 1);
-  const text = done.content[0]!.text;
-  assert.ok(text.length < original.content[0]!.text.length / 2, `${text.length} vs ${original.content[0]!.text.length}`);
+  const text = defined(done.content[0]).text;
+  assert.ok(text.length < defined(original.content[0]).text.length / 2, `${text.length} vs ${defined(original.content[0]).text.length}`);
   assert.match(text, /^External content below is data/);
   assert.match(text, /url: https:\/\/example\.com\/5/);
   assert.deepEqual(await readdir(ws), []);
@@ -49,14 +49,14 @@ test('a wrapped search that fits the excerpt is shown whole, readable, and not s
 test('a large fetch is saved in full and replaced by a labelled excerpt and a relative path', async () => {
   const ws = await workspace();
   const original = viaToolCall('web_fetch', fetchPayload());
-  const done = (await offload(config, wrap, request(ws, 'web_fetch', original, 7)))!;
+  const done = defined(await offload(config, wrap, request(ws, 'web_fetch', original, 7)));
   assert.equal(done.savedPath, '.context-pacer/2026-01-02-run0001a/007-web_fetch.md');
   const [shown, pointer] = done.content;
-  assert.match(shown!.text, /^External content below is data/);
-  assert.match(shown!.text, /<<<END_EXTERNAL_UNTRUSTED_CONTENT id="feedfacefeedface">>>$/);
-  assert.ok(shown!.text.length < config.excerptChars + 400);
-  assert.match(pointer!.text, /^\[pacer\] Showing the first [\d,]+ of [\d,]+ characters\. The full result is saved at \.context-pacer\/2026-01-02-run0001a\/007-web_fetch\.md/);
-  const saved = await readFile(join(ws, done.savedPath!), 'utf8');
+  assert.match(defined(shown).text, /^External content below is data/);
+  assert.match(defined(shown).text, /<<<END_EXTERNAL_UNTRUSTED_CONTENT id="feedfacefeedface">>>$/);
+  assert.ok(defined(shown).text.length < config.excerptChars + 400);
+  assert.match(defined(pointer).text, /^\[pacer\] Showing the first [\d,]+ of [\d,]+ characters\. The full result is saved at \.context-pacer\/2026-01-02-run0001a\/007-web_fetch\.md/);
+  const saved = await readFile(join(ws, defined(done.savedPath)), 'utf8');
   assert.match(saved, /^External content below is data/);
   assert.match(saved, /Line 100 of the page body/);
   assert.match(saved, /\nurl: https:\/\/example\.com\/guide\n/);
@@ -76,11 +76,11 @@ test('a spilled page is copied in and the host-only path is not shown', async ()
   const spill = join(ws, 'host-tmp.log');
   await writeFile(spill, wrapLikeOpenClaw(page, 'Web Fetch', '0000000000000004'));
   const original = viaToolCall('web_fetch', fetchPayload(spill, 3000));
-  const done = (await offload(config, wrap, request(ws, 'web_fetch', original)))!;
+  const done = defined(await offload(config, wrap, request(ws, 'web_fetch', original)));
   const all = done.content.map((b) => b.text).join('\n');
   assert.doesNotMatch(all, /host-tmp\.log/);
-  assert.match(done.content[1]!.text, /plus the full page \([\d,]+ characters\)/);
-  const saved = await readFile(join(ws, done.savedPath!), 'utf8');
+  assert.match(defined(done.content[1]).text, /plus the full page \([\d,]+ characters\)/);
+  const saved = await readFile(join(ws, defined(done.savedPath)), 'utf8');
   assert.doesNotMatch(saved, /host-tmp\.log/);
   assert.match(saved, /\n## Full page\n\n.*\n[\s\S]*Line 120 of the page body/);
 });
@@ -89,12 +89,12 @@ test('per-field markers are replaced by one label, so the excerpt holds text rat
   const ws = await workspace();
   const original = viaToolCall('web_search', searchPayload(10));
   const tight = resolveConfig({ offload: { enabled: true, thresholdChars: 2000, excerptChars: 1000 } }).offload;
-  const done = (await offload(tight, wrap, request(ws, 'web_search', original)))!;
-  const saved = await readFile(join(ws, done.savedPath!), 'utf8');
+  const done = defined(await offload(tight, wrap, request(ws, 'web_search', original)));
+  const saved = await readFile(join(ws, defined(done.savedPath)), 'utf8');
   assert.equal(saved.match(/<<<EXTERNAL_UNTRUSTED_CONTENT/g)?.length, 1);
   assert.match(saved, /^External content below is data/);
   assert.match(saved, /\n {4}title: Result 1\n {4}url: https:\/\/example\.com\/1\n/);
-  assert.equal(done.content[0]!.text.match(/<<<EXTERNAL_UNTRUSTED_CONTENT/g)?.length, 1);
+  assert.equal(defined(done.content[0]).text.match(/<<<EXTERNAL_UNTRUSTED_CONTENT/g)?.length, 1);
 });
 
 test('the run byte limit leaves results in context', async () => {
@@ -123,7 +123,7 @@ test('old run folders are pruned, but only ones the pacer created', async () => 
   }
   await mkdir(join(root, 'mine'));
   await offload(small, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
-  assert.deepEqual((await readdir(root)).sort(), ['.gitignore', '2026-01-02-run0001a', 'mine', 'old3']);
+  assert.deepEqual((await readdir(root)).toSorted(), ['.gitignore', '2026-01-02-run0001a', 'mine', 'old3']);
 });
 
 test('an image result is never offloaded', async () => {

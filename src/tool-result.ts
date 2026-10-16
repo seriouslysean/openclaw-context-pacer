@@ -7,19 +7,30 @@
  * escaped JSON, with the page text twice (in `content` and in `details`); upstream #169537 drops `details` from it.
  */
 
-export type ToolResult = { content?: unknown; details?: unknown };
-export type Inner = { name: string; args: unknown; result?: ToolResult; wrapped: boolean };
+export interface ToolResult {
+  content?: unknown;
+  details?: unknown;
+}
+
+export interface Inner {
+  name: string;
+  args: unknown;
+  result?: ToolResult;
+  wrapped: boolean;
+}
 
 /** Tool Search's call control in OpenClaw 2026.10. */
 export const TOOL_CALL = 'tool_call';
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** The tool that actually ran and its own result, whether it was called directly or through `tool_call`. */
 export function resolveInner(toolName: string, args: unknown, result: ToolResult): Inner {
-  if (toolName !== TOOL_CALL) return { name: toolName, args, result, wrapped: false };
+  if (toolName !== TOOL_CALL) {
+    return { name: toolName, args, result, wrapped: false };
+  }
   const call = isRecord(args) ? args : {};
   const innerArgs = isRecord(call.args) ? call.args : {};
   const details = result.details;
@@ -35,10 +46,14 @@ export function resolveInner(toolName: string, args: unknown, result: ToolResult
 
 /** All text blocks joined, or undefined when the result holds anything else (an image, say). */
 export function textOf(result: ToolResult): string | undefined {
-  if (!Array.isArray(result.content)) return undefined;
+  if (!Array.isArray(result.content)) {
+    return undefined;
+  }
   const parts: string[] = [];
   for (const block of result.content) {
-    if (!isRecord(block) || block.type !== 'text' || typeof block.text !== 'string') return undefined;
+    if (!isRecord(block) || block.type !== 'text' || typeof block.text !== 'string') {
+      return undefined;
+    }
     parts.push(block.text);
   }
   return parts.join('\n');
@@ -77,8 +92,11 @@ function render(value: unknown, indent: string, out: string[], unwrap: boolean):
       }
       const text = scalar(item, unwrap);
       // Page text keeps its own lines, so `read` with offset and limit pages through it.
-      if (text.includes('\n')) out.push(`${indent}${key}:`, text);
-      else out.push(`${indent}${key}: ${text}`);
+      if (text.includes('\n')) {
+        out.push(`${indent}${key}:`, text);
+      } else {
+        out.push(`${indent}${key}: ${text}`);
+      }
     }
     return;
   }
@@ -95,7 +113,9 @@ function scalar(value: unknown, unwrap: boolean): string {
  */
 export function readable(text: string, unwrap = false): string {
   const trimmed = text.trim();
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return unwrap ? unwrapExternal(text) : text;
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    return unwrap ? unwrapExternal(text) : text;
+  }
   try {
     const out: string[] = [];
     render(JSON.parse(trimmed), '', out, unwrap);
@@ -108,14 +128,18 @@ export function readable(text: string, unwrap = false): string {
 /** True when OpenClaw labelled this result as untrusted external content. */
 export function isExternal(result: ToolResult, text: string): boolean {
   const details = result.details;
-  if (isRecord(details) && isRecord(details.externalContent) && details.externalContent.untrusted === true) return true;
+  if (isRecord(details) && isRecord(details.externalContent) && details.externalContent.untrusted === true) {
+    return true;
+  }
   return text.includes('<<<EXTERNAL_UNTRUSTED_CONTENT');
 }
 
 /** `details.spill.path` from a truncated `web_fetch`: the host file holding the full page. */
 export function spillPath(result: ToolResult): string | undefined {
   const details = result.details;
-  if (!isRecord(details) || !isRecord(details.spill)) return undefined;
+  if (!isRecord(details) || !isRecord(details.spill)) {
+    return undefined;
+  }
   const path = details.spill.path;
   return typeof path === 'string' && path.startsWith('/') ? path : undefined;
 }
