@@ -66,10 +66,11 @@ To turn it off, run `openclaw plugins disable context-pacer` and restart. Saved 
 Requires Node 24.16 or later.
 
 ```sh
-npm test    # node --test, using Node's built-in TypeScript support
+npm ci --ignore-scripts
+npm run lint && npm run typecheck && npm test
 ```
 
-CI also typechecks against the OpenClaw version in `package.json`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

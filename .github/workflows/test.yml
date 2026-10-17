@@ -21,11 +21,15 @@ jobs:
         with:
           node-version: 24.16
 
+      # The SDK is a peer the host gateway supplies at runtime; the pinned devDependency is only for the typecheck.
+      - name: install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: lint
+        run: npm run lint
+
+      - name: typecheck
+        run: npm run typecheck
+
       - name: tests
         run: npm test
-
-      # The SDK is a peer the host gateway supplies, so it is installed here only, at the version package.json declares.
-      - name: typecheck
-        run: |
-          npm install --no-save --ignore-scripts --no-audit --no-fund typescript@7.0.2 @types/node@24.19.1 openclaw@2026.10.3
-          npx --no-install tsc -p tsconfig.json

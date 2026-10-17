@@ -2,20 +2,18 @@
 
 ## Setup
 
-Node 24.16 or later. The tests use only Node's built-ins, so there is nothing to install.
+Node 24.16 or later. `package.json` pins the dev tools: oxlint, TypeScript, the Node types and the OpenClaw plugin SDK. CI runs these checks:
 
 ```sh
+npm ci --ignore-scripts
+npm run lint
+npm run typecheck
 npm test
 ```
 
-CI also typechecks against the OpenClaw plugin SDK. To run that locally without adding anything to `package.json`:
+`npm test` fails below 80% line, 85% branch or 80% function coverage of `src/`.
 
-```sh
-npm install --no-save --ignore-scripts typescript@7.0.2 @types/node@24.19.1 openclaw@2026.10.3
-npx tsc -p tsconfig.json
-```
-
-Remove that `node_modules/` from a checkout you've installed with `openclaw plugins install --link`. OpenClaw's plugin loader maps `openclaw/plugin-sdk/*` to the gateway's own install (2026.10.3), so a second copy only adds a version that can drift from the host.
+Run the checks in a separate clone, or delete `node_modules/` from a checkout you've installed with `openclaw plugins install --link`. OpenClaw's plugin loader maps `openclaw/plugin-sdk/*` to the gateway's own install (2026.10.3), so a second copy only adds a version that can drift from the host.
 
 ## Changing the config schema
 
