@@ -165,6 +165,23 @@ test('old run folders are pruned, but only ones the pacer created', async () => 
   assert.deepEqual((await readdir(root)).toSorted(), ['.gitignore', '2026-01-02-run0001a', 'mine', 'old3']);
 });
 
+test('cleanup of a forged run folder removes the links inside it, not what they point to', async () => {
+  const ws = await workspace();
+  const elsewhere = await workspace();
+  await mkdir(join(elsewhere, 'sub'));
+  await writeFile(join(elsewhere, 'keep.txt'), 'outside');
+  const forged = join(ws, '.context-pacer', 'forged');
+  await mkdir(join(forged, 'inner'), { recursive: true });
+  await writeFile(join(forged, SENTINEL), '');
+  await symlink(elsewhere, join(forged, 'dir-link'));
+  await symlink(join(elsewhere, 'keep.txt'), join(forged, 'file-link'));
+  await symlink(join(elsewhere, 'sub'), join(forged, 'inner', 'deep-link'));
+  const one = resolveConfig({ offload: { enabled: true, maxRuns: 1 } }).offload;
+  await offload(one, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['.gitignore', '2026-01-02-run0001a']);
+  assert.deepEqual((await readdir(elsewhere)).toSorted(), ['keep.txt', 'sub']);
+});
+
 test('an image result is never offloaded', async () => {
   const ws = await workspace();
   const original = { content: [{ type: 'image', data: 'x'.repeat(10_000), mimeType: 'image/png' }], details: {} };
