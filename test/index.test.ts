@@ -124,6 +124,19 @@ test('under workspaceAccess none, a large result is saved in the sandbox workspa
   assert.deepEqual(warnings, []);
 });
 
+test('an unsandboxed run with its own working directory keeps the result in context and says why', async () => {
+  const agentWs = await workspace();
+  const taskDir = await workspace();
+  const { host: h, warnings } = host({ config: offloadOn });
+  h.saveDir = createSaveDir({}, () => agentWs, h.warn);
+  const original = viaToolCall('web_fetch', fetchPayload());
+  const out = await createMiddleware(h)({ ...event('tool_call', original, { id: 'web_fetch', args: {} }), cwd: taskDir }, ctx('researcher'));
+  assert.deepEqual(defined(out ? out.result : undefined).content.slice(0, -1), original.content);
+  assert.deepEqual(await readdir(agentWs), []);
+  assert.deepEqual(await readdir(taskDir), []);
+  assert.deepEqual(warnings, ['offload skipped for agent "researcher": its tools run outside the agent workspace']);
+});
+
 test('a skipped offload is logged once per agent and reason', () => {
   const warnings: string[] = [];
   const remote = { agents: { defaults: { sandbox: { mode: 'all', backend: 'ssh', workspaceAccess: 'rw' } } } };

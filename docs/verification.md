@@ -31,7 +31,7 @@
   - that `event.cwd` is the sandbox workspace on a live gateway;
   - that a file saved there shows up in the container;
   - that the agent's `read` opens it, including from a read-only `ro` mount.
-- The skips for backends other than Docker and Podman, and for an `rw` run whose tools run outside the agent workspace. Unit tests only.
+- The skips for backends other than Docker and Podman, for an unsandboxed or `rw` run whose tools start outside the agent workspace, and for a sandbox a person's role requires under `mode: "off"`. Unit tests only.
 - Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. Only a Podman sandbox has been run live.
 - Managed project worktrees. A session with one runs its tools in a private checkout, so the plugin saves there. Whether OpenClaw keeps, reconciles or publishes those files isn't checked.
 - Whether `llm_output` fires per model call or once per run, with the conversation-access grant. The request-size estimate covers the gap.

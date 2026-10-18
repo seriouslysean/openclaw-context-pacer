@@ -47,8 +47,20 @@ test('an rw sandbox whose tools run outside the agent workspace gets no saved fi
   assert.equal(saveDir(config({ mode: 'all', workspaceAccess: 'rw' }, undefined), WS), WS);
 });
 
-test('an unsandboxed agent saves in its workspace, whatever working directory the run reports', () => {
-  assert.equal(saveDir({}, SANDBOX_WS), WS);
+test('an unsandboxed run in the agent workspace saves there', () => {
+  assert.equal(saveDir({}), WS);
+  assert.equal(saveDir({}, WS), WS);
+  assert.equal(saveDir(config({ mode: 'off' }, undefined), `${WS}/`), WS);
+});
+
+test('an unsandboxed run whose tools start in another folder gets no saved file, since read resolves the path there', () => {
+  assert.equal(saveDir({}, '/srv/projects/task'), undefined);
+  assert.equal(saveDir(config({ mode: 'off' }, undefined), `${WS}/projects/task`), undefined);
+});
+
+test('a sandbox a role requires under config mode off gets no saved file in the agent workspace it cannot read', () => {
+  assert.equal(saveDir(config({ mode: 'off' }, undefined), SANDBOX_WS), undefined);
+  assert.equal(saveDir(config({ mode: 'all' }, { mode: 'off' }), SANDBOX_WS), undefined);
 });
 
 test('a remote backend gets no saved file even when OpenClaw reports a local working directory', () => {
@@ -57,7 +69,7 @@ test('a remote backend gets no saved file even when OpenClaw reports a local wor
 
 test('the agent entry overrides the defaults', () => {
   assert.equal(saveDir(config({ mode: 'all', workspaceAccess: 'rw' }, { workspaceAccess: 'ro' }), SANDBOX_WS), SANDBOX_WS);
-  assert.equal(readable(config({ mode: 'all' }, { mode: 'off' })), true);
+  assert.equal(saveDir(config({ mode: 'all' }, { mode: 'off' }), WS), WS);
 });
 
 test('a sandbox on a backend other than docker or podman gets no saved file, since its tools may not see the gateway disk', () => {

@@ -8,9 +8,13 @@
  * rooted in, and OpenClaw refuses to start one anywhere else (2026.10.3 and 2026.10.4, src/agents/workspace-sandbox.ts,
  * src/agents/embedded-agent-runner/extensions.ts).
  *
- * `non-main` sandboxes every session but the agent's main one, so it is treated as sandboxed; an unsandboxed session
- * then reports the agent workspace as `cwd`. Sandboxes required by a person's role are not visible in config, so an
- * agent configured without a sandbox always saves in the agent workspace.
+ * The pointer to a saved file is relative, so the agent workspace is used only when the run's tools start there. An
+ * unsandboxed run resolves `read` paths against its own working directory when it has one (an agent's `cwd` setting,
+ * a spawned session's, or the CLI's), and contains `read` to it with `tools.fs.workspaceOnly` (2026.10.3 and 2026.10.4,
+ * src/agents/conversation-capability-profile.ts, src/agents/core-coding-tools.ts). A sandbox a person's role requires
+ * isn't visible in config; under `mode: "off"` its run reports the sandbox workspace as `cwd`, so the same check
+ * skips it. `non-main` sandboxes every session but the agent's main one, so it is treated as sandboxed; an unsandboxed
+ * session then reports the agent workspace as `cwd`.
  *
  * Only Docker and Podman mount a folder on the gateway into the sandbox. SSH and Crabbox seed a remote workspace once,
  * and OpenShell runs remotely or syncs around `exec`, so a file saved on the gateway can be missing from what the
@@ -38,11 +42,16 @@ function sandboxSetting(config: unknown, agentId: string, key: string): unknown 
   return defaults[key];
 }
 
+/** The agent workspace, when the run's tools start there. */
+function agentWorkspace(workspace: string, cwd: string | undefined): Target {
+  return cwd === undefined || resolve(cwd) === resolve(workspace) ? { dir: workspace } : { skip: 'its tools run outside the agent workspace' };
+}
+
 /** `cwd` is the folder OpenClaw runs the agent's tools in for this run, as a path on the gateway. */
 export function offloadTarget(config: unknown, agentId: string, workspace: string, cwd?: string): Target {
   const mode = sandboxSetting(config, agentId, 'mode') ?? 'off';
   if (mode === 'off') {
-    return { dir: workspace };
+    return agentWorkspace(workspace, cwd);
   }
   // OpenClaw's own default when no backend is set (docs/gateway/sandboxing/modes-scope-and-backend.md).
   const setting = sandboxSetting(config, agentId, 'backend');
@@ -51,8 +60,8 @@ export function offloadTarget(config: unknown, agentId: string, workspace: strin
     return { skip: `sandbox backend "${backend}" may not see files saved on the gateway (needs docker or podman)` };
   }
   if ((sandboxSetting(config, agentId, 'workspaceAccess') ?? 'none') === 'rw') {
-    // Under rw the tools run in the agent workspace; any other folder is one the agent may not see saved files in.
-    return cwd === undefined || resolve(cwd) === resolve(workspace) ? { dir: workspace } : { skip: 'its tools run outside the agent workspace' };
+    // Any other folder under rw is a role-capped sandbox or a project worktree, where saved files may not be visible.
+    return agentWorkspace(workspace, cwd);
   }
   return cwd !== undefined && isAbsolute(cwd) ? { dir: cwd } : { skip: "OpenClaw didn't report the sandbox workspace its tools run in" };
 }
