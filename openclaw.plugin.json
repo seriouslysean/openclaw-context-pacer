@@ -88,11 +88,11 @@
       "offload": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Save large gathering results to the agent's workspace and show an excerpt with the file's path instead.",
+        "description": "Save large gathering results to the workspace the agent's tools run in and show an excerpt with the file's path instead.",
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Turn offload on. Applies only to agents that are unsandboxed or in a Docker or Podman sandbox with workspaceAccess \"rw\".",
+            "description": "Turn offload on. Applies to unsandboxed agents and to Docker or Podman sandboxes.",
             "default": false
           },
           "thresholdChars": {
@@ -113,7 +113,7 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^(?!\\.+(?:/|$))[A-Za-z0-9._-]+(?:/(?!\\.+(?:/|$))[A-Za-z0-9._-]+)*/?$",
-            "description": "Workspace-relative folder for saved results, with one subfolder per run. It must be inside the workspace so a sandboxed agent can read it.",
+            "description": "Workspace-relative folder for saved results, with one subfolder per run. It is inside the workspace the agent's tools run in, so a sandboxed agent can read it.",
             "default": ".context-pacer"
           },
           "maxRuns": {

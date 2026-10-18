@@ -109,6 +109,21 @@ test('an agent that cannot read its workspace gets the status line and no saved 
   assert.deepEqual(await readdir(ws), []);
 });
 
+test('under workspaceAccess none, a large result is saved in the sandbox workspace the tools run in, not the agent workspace', async () => {
+  const agentWs = await workspace();
+  const sandboxWs = await workspace();
+  const sandboxed = { agents: { defaults: { sandbox: { mode: 'all', workspaceAccess: 'none' } } } };
+  const { host: h, warnings } = host({ config: offloadOn });
+  h.saveDir = createSaveDir(sandboxed, () => agentWs, h.warn);
+  const original = viaToolCall('web_fetch', fetchPayload());
+  const out = await createMiddleware(h)({ ...event('tool_call', original, { id: 'web_fetch', args: {} }), cwd: sandboxWs }, ctx('researcher'));
+  const pointer = defined(texts(defined(out ? out.result : undefined)).at(-2));
+  const saved = defined(/saved at (\S+): read it/.exec(pointer)?.[1]);
+  assert.match(await readFile(join(sandboxWs, saved), 'utf8'), /Line 100 of the page body/);
+  assert.deepEqual(await readdir(agentWs), []);
+  assert.deepEqual(warnings, []);
+});
+
 test('a skipped offload is logged once per agent and reason', () => {
   const warnings: string[] = [];
   const remote = { agents: { defaults: { sandbox: { mode: 'all', backend: 'ssh', workspaceAccess: 'rw' } } } };

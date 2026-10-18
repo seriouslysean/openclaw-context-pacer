@@ -23,8 +23,11 @@ interface Ctx {
 export interface MiddlewareHost {
   pacer: Pacer;
   warn: (message: string) => void;
-  /** The folder to save the agent's results in, or undefined when the agent couldn't read them there. */
-  saveDir: (agentId: string) => string | undefined;
+  /**
+   * The folder to save the agent's results in, or undefined when the agent couldn't read them there. `cwd` is the
+   * run's working directory from the middleware event.
+   */
+  saveDir: (agentId: string, cwd?: string) => string | undefined;
   wrap: Wrap;
 }
 
@@ -94,8 +97,8 @@ export function usageHooks(pacer: Pacer) {
  */
 export function createSaveDir(config: unknown, workspaceDir: (agentId: string) => string, warn: (message: string) => void) {
   const warned = new Set<string>();
-  return (agentId: string): string | undefined => {
-    const target = offloadTarget(config, agentId, workspaceDir(agentId));
+  return (agentId: string, cwd?: string): string | undefined => {
+    const target = offloadTarget(config, agentId, workspaceDir(agentId), cwd);
     if ('dir' in target) {
       return target.dir;
     }
@@ -129,7 +132,7 @@ export function createMiddleware(host: MiddlewareHost): Middleware {
       }
       let result = event.result;
       const failed = event.isError === true || isErrorResult(event.result);
-      const saveDir = pacer.config.offload.enabled && inner.result && !failed ? host.saveDir(agentId) : undefined;
+      const saveDir = pacer.config.offload.enabled && inner.result && !failed ? host.saveDir(agentId, event.cwd) : undefined;
       if (inner.result && saveDir !== undefined) {
         try {
           const done = await offload(pacer.config.offload, host.wrap, {

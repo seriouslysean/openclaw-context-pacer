@@ -1,9 +1,9 @@
 /**
- * Offload: a large gathering result is saved in full to the agent's own workspace, where its sandbox can read it,
- * and the model sees an excerpt plus the file's path. This is the "restorable compression" pattern: nothing is
+ * Offload: a large gathering result is saved in full to the workspace the agent's tools run in, where its sandbox can
+ * read it, and the model sees an excerpt plus the file's path. This is the "restorable compression" pattern: nothing is
  * dropped, only moved out of context until the agent asks for it.
  *
- * The agent can write to that workspace too, so it can plant or swap in symlinks while a save runs. Every file
+ * Unless that workspace is read-only, the agent can write there too, so it can plant or swap in symlinks while a save runs. Every file
  * operation below it goes through OpenClaw's root-bounded file API (`root` from the plugin SDK), which refuses a
  * symlink at any point on the path, including one swapped in after a check.
  */
