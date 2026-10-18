@@ -6,7 +6,8 @@
   - the status line and its escalation;
   - config fallbacks and clamping;
   - unwrapping `tool_call`;
-  - offload: excerpts, saved files, the "Full page" copy, the path rules, the symlink refusal, cleanup and `.gitignore`;
+  - offload: excerpts, saved files, the "Full page" copy, the path rules, cleanup and `.gitignore`;
+  - symlinks: a symlinked save folder, a dangling symlink at the run marker, and a run folder swapped for a symlink between a path check and the write;
   - the leak scan.
 - **Typecheck** against the OpenClaw 2026.10.3 plugin SDK, in CI.
 - **Replay** of 247 stored `web_search` and `web_fetch` results from one research agent on 2026.10.3 through offload with the default settings: 0 errors. What the model saw fell from 2.88 million characters to 1.02 million. That's size only, not answer quality.

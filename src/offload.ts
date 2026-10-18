@@ -2,11 +2,17 @@
  * Offload: a large gathering result is saved in full to the agent's own workspace, where its sandbox can read it,
  * and the model sees an excerpt plus the file's path. This is the "restorable compression" pattern: nothing is
  * dropped, only moved out of context until the agent asks for it.
+ *
+ * The agent can write to that workspace too, so it can plant or swap in symlinks while a save runs. Every file
+ * operation below it goes through OpenClaw's root-bounded file API (`root` from the plugin SDK), which refuses a
+ * symlink at any point on the path, including one swapped in after a check.
  */
-import { lstat, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { root } from 'openclaw/plugin-sdk/security-runtime';
 import type { OffloadConfig } from './pacer.ts';
 import { type ToolResult, isExternal, readable, spillPath, textOf } from './tool-result.ts';
+
+type Root = Awaited<ReturnType<typeof root>>;
 
 /** Wraps text in OpenClaw's untrusted-content markers (`wrapExternalContent` from the plugin SDK). */
 export type Wrap = (text: string, source: string) => string;
@@ -55,53 +61,34 @@ export function excerpt(text: string, max: number): string {
   return text.slice(0, cut > max * 0.8 ? cut : max);
 }
 
-/** Creates the folder if needed and refuses a symlink anywhere on the path below the workspace. */
-async function ensureRealDir(workspaceDir: string, relative: string): Promise<string> {
-  let current = workspaceDir;
-  for (const segment of relative.split('/')) {
-    current = join(current, segment);
-    // Each folder is checked before the next is made inside it.
-    // oxlint-disable-next-line no-await-in-loop
-    await mkdir(current, { recursive: true, mode: 0o700 });
-    // oxlint-disable-next-line no-await-in-loop
-    const info = await lstat(current);
-    if (!info.isDirectory() || info.isSymbolicLink()) {
-      throw new Error(`${current} is not a plain folder`);
-    }
-  }
-  return current;
+/** Keeps the newest `maxRuns` folders this plugin created in `directory`, plus the current one. */
+async function prune(workspace: Root, directory: string, maxRuns: number, current: string): Promise<void> {
+  const entries = await workspace.list(directory, { withFileTypes: true });
+  const folders = entries.filter((entry) => entry.isDirectory && !entry.isSymbolicLink && entry.name !== current);
+  const marked = await Promise.all(
+    folders.map(async (entry) => ((await isMarked(workspace, `${directory}/${entry.name}`)) ? entry : undefined)),
+  );
+  const ours = marked.filter((entry) => entry !== undefined).toSorted((a, b) => b.mtimeMs - a.mtimeMs);
+  await Promise.all(
+    ours.slice(Math.max(0, maxRuns - 1)).map((old) => workspace.remove(`${directory}/${old.name}`, { recursive: true, force: true })),
+  );
 }
 
-/** Keeps the newest `maxRuns` folders this plugin created, plus the current one. */
-export async function prune(root: string, maxRuns: number, current: string): Promise<void> {
-  const entries = await readdir(root, { withFileTypes: true });
-  const folders = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => join(root, entry.name))
-    .filter((path) => path !== current);
-  const marked = await Promise.all(folders.map(markedFolder));
-  const ours = marked
-    .filter((folder) => folder !== undefined)
-    .toSorted((a, b) => b.mtime - a.mtime);
-  await Promise.all(ours.slice(Math.max(0, maxRuns - 1)).map((old) => rm(old.path, { recursive: true, force: true })));
-}
-
-/** The folder and its age when it carries this plugin's marker; undefined for anything else. */
-async function markedFolder(path: string): Promise<{ path: string; mtime: number } | undefined> {
+/** True when the folder carries this plugin's marker; a marker that is a symlink doesn't count. */
+async function isMarked(workspace: Root, folder: string): Promise<boolean> {
   try {
-    await stat(join(path, SENTINEL));
-    return { path, mtime: (await stat(path)).mtimeMs };
+    return await workspace.exists(`${folder}/${SENTINEL}`);
   } catch {
-    return undefined;
+    return false;
   }
 }
 
 /** Leaves an existing file alone, including one the user wrote. */
-async function writeIfAbsent(path: string, text: string): Promise<void> {
+async function createIfAbsent(workspace: Root, path: string, text: string): Promise<void> {
   try {
-    await writeFile(path, text, { mode: 0o600, flag: 'wx' });
+    await workspace.create(path, text, { private: true });
   } catch (error) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'already-exists')) {
       throw error;
     }
   }
@@ -149,22 +136,20 @@ export async function offload(config: OffloadConfig, wrap: Wrap, req: OffloadReq
     return undefined;
   }
 
-  const runDir = await ensureRealDir(req.workspaceDir, `${config.directory}/${req.folder}`);
-  const fresh = await stat(join(runDir, SENTINEL)).then(
-    () => false,
-    () => true,
-  );
-  if (fresh) {
-    const root = join(req.workspaceDir, config.directory);
-    await writeIfAbsent(join(root, '.gitignore'), GITIGNORE);
-    await writeFile(join(runDir, SENTINEL), 'Created by the context-pacer OpenClaw plugin; old run folders are deleted.\n', { mode: 0o600 });
-    await prune(root, config.maxRuns, runDir);
+  const workspace = await root(req.workspaceDir);
+  const runDir = `${config.directory}/${req.folder}`;
+  await workspace.mkdir(runDir, { private: true });
+  const marker = `${runDir}/${SENTINEL}`;
+  if (!(await workspace.exists(marker))) {
+    await createIfAbsent(workspace, `${config.directory}/.gitignore`, GITIGNORE);
+    await createIfAbsent(workspace, marker, 'Created by the context-pacer OpenClaw plugin; old run folders are deleted.\n');
+    await prune(workspace, config.directory, config.maxRuns, req.folder);
   }
   const file = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}.md`;
-  // `wx` fails rather than overwrite anything already at that path.
-  await writeFile(join(runDir, file), saved, { mode: 0o600, flag: 'wx' });
+  // `create` fails rather than overwrite anything already at that path.
+  await workspace.create(`${runDir}/${file}`, saved, { private: true });
 
-  const savedPath = `${config.directory}/${req.folder}/${file}`;
+  const savedPath = `${runDir}/${file}`;
   const shown = excerpt(body, config.excerptChars);
   const fullPage = spillText === undefined ? '' : `, plus the full page (${spillText.length.toLocaleString('en-US')} characters)`;
   const pointer = `[pacer] Showing the first ${shown.length.toLocaleString('en-US')} of ${body.length.toLocaleString('en-US')} characters${fullPage}. The full result is saved at ${savedPath}: read it with offset and limit if you need more.`;
