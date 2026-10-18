@@ -24,7 +24,7 @@ The line escalates in two steps:
 [pacer] Showing the first 3,962 of 6,337 characters. The full result is saved at .context-pacer/2026-10-15-3f9c1a2b/004-web_fetch.md: read it with offset and limit if you need more.
 ```
 
-Nothing is dropped: the agent can `read` the rest when it needs it. Offload applies only to agents that can read their workspace: unsandboxed, or sandboxed with `workspaceAccess: "rw"`. In a replay of 247 stored results from one research agent, offload cut the text the model saw by about 65%. That measures size only, not answer quality.
+Nothing is dropped: the agent can `read` the rest when it needs it. Offload applies only to agents that can read their workspace: unsandboxed, or in a Docker or Podman sandbox with `workspaceAccess: "rw"`. In a replay of 247 stored results from one research agent, offload cut the text the model saw by about 65%. That measures size only, not answer quality.
 
 ## Install
 

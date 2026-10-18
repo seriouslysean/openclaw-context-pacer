@@ -2,7 +2,7 @@ import { type OpenClawPluginApi, definePluginEntry } from 'openclaw/plugin-sdk/p
 import { wrapExternalContent } from 'openclaw/plugin-sdk/security-runtime';
 import { type Wrap, offload, runFolder } from './offload.ts';
 import { Pacer, appendStatus, resolveConfig } from './pacer.ts';
-import { offloadReadable } from './sandbox.ts';
+import { offloadTarget } from './sandbox.ts';
 import { isErrorResult, isRecord, resolveInner } from './tool-result.ts';
 
 type Middleware = Parameters<OpenClawPluginApi['registerAgentToolResultMiddleware']>[0];
@@ -23,9 +23,8 @@ interface Ctx {
 export interface MiddlewareHost {
   pacer: Pacer;
   warn: (message: string) => void;
-  /** Whether the agent can read files saved in its workspace. */
-  canRead: (agentId: string) => boolean;
-  workspaceDir: (agentId: string) => string;
+  /** The folder to save the agent's results in, or undefined when the agent couldn't read them there. */
+  saveDir: (agentId: string) => string | undefined;
   wrap: Wrap;
 }
 
@@ -90,6 +89,26 @@ export function usageHooks(pacer: Pacer) {
 }
 
 /**
+ * Where an agent's results are saved: only where the agent can open what it is pointed to. Otherwise results pass
+ * through with the status line only, and the reason is logged once per agent.
+ */
+export function createSaveDir(config: unknown, workspaceDir: (agentId: string) => string, warn: (message: string) => void) {
+  const warned = new Set<string>();
+  return (agentId: string): string | undefined => {
+    const target = offloadTarget(config, agentId, workspaceDir(agentId));
+    if ('dir' in target) {
+      return target.dir;
+    }
+    const key = `${agentId}\n${target.skip}`;
+    if (!warned.has(key)) {
+      warned.add(key);
+      warn(`offload skipped for agent "${agentId}": ${target.skip}`);
+    }
+    return undefined;
+  };
+}
+
+/**
  * Runs after a tool executes and before the result reaches the model. Every failure returns undefined, which leaves
  * the result as it was; a thrown error or malformed output would make OpenClaw replace the result with an error
  * notice instead.
@@ -110,10 +129,11 @@ export function createMiddleware(host: MiddlewareHost): Middleware {
       }
       let result = event.result;
       const failed = event.isError === true || isErrorResult(event.result);
-      if (pacer.config.offload.enabled && inner.result && !failed && host.canRead(agentId)) {
+      const saveDir = pacer.config.offload.enabled && inner.result && !failed ? host.saveDir(agentId) : undefined;
+      if (inner.result && saveDir !== undefined) {
         try {
           const done = await offload(pacer.config.offload, host.wrap, {
-            workspaceDir: host.workspaceDir(agentId),
+            workspaceDir: saveDir,
             folder: pacer.folderFor(runId, () => runFolder(runId, new Date())),
             index: pacer.gatherIndex(runId),
             name: inner.name,
@@ -143,19 +163,6 @@ export default definePluginEntry({
   register(api) {
     const pacer = new Pacer(resolveConfig(api.pluginConfig));
     const warn = (message: string) => api.logger?.warn?.(`[${PLUGIN_ID}] ${message}`);
-    // Offload only where the agent can open what it is pointed to; otherwise results pass through with the line only.
-    const unreadableWarned = new Set<string>();
-    const canRead = (agentId: string): boolean => {
-      if (offloadReadable(api.config, agentId)) {
-        return true;
-      }
-      if (!unreadableWarned.has(agentId)) {
-        unreadableWarned.add(agentId);
-        warn(`offload skipped for agent "${agentId}": its sandbox can't read the workspace (needs workspaceAccess "rw")`);
-      }
-      return false;
-    };
-
     const hooks = usageHooks(pacer);
     api.on('model_call_started', hooks.modelCallStarted);
     api.on('model_call_ended', hooks.modelCallEnded);
@@ -171,8 +178,7 @@ export default definePluginEntry({
       createMiddleware({
         pacer,
         warn,
-        canRead,
-        workspaceDir: (agentId) => api.runtime.agent.resolveAgentWorkspaceDir(api.config, agentId),
+        saveDir: createSaveDir(api.config, (agentId) => api.runtime.agent.resolveAgentWorkspaceDir(api.config, agentId), warn),
         wrap,
       }),
       { runtimes: ['openclaw'] },

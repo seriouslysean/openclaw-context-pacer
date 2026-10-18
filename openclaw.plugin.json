@@ -92,7 +92,7 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Turn offload on. Applies only to agents that are unsandboxed or have workspaceAccess \"rw\".",
+            "description": "Turn offload on. Applies only to agents that are unsandboxed or in a Docker or Podman sandbox with workspaceAccess \"rw\".",
             "default": false
           },
           "thresholdChars": {

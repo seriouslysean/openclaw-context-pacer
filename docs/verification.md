@@ -25,7 +25,7 @@
 
 ## Not yet checked on a live gateway
 
-- Offload for unsandboxed agents. The plugin allows it there, but only an `rw` sandbox has been run live. The rule that skips offload for `none` and `ro` sandboxes is covered by unit tests only.
+- Offload for unsandboxed agents. The plugin allows it there, but only an `rw` sandbox has been run live. The rules that skip offload for `none` and `ro` sandboxes, and for backends other than Docker and Podman, are covered by unit tests only.
 - Whether `llm_output` fires per model call or once per run, with the conversation-access grant. The request-size estimate covers the gap.
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
 - Whether agents read the saved files when they need more, or work from the excerpt alone.
