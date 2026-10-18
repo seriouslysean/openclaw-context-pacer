@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 24.16
 
-      # The SDK is a peer the host gateway supplies at runtime; the pinned devDependency is only for the typecheck.
+      # The gateway supplies the SDK at run time; the typecheck and the entry tests import the pinned devDependency.
       - name: install
         run: npm ci --ignore-scripts --no-audit --no-fund
 
