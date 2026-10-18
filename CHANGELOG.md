@@ -11,4 +11,6 @@ First version, built and tested against OpenClaw 2026.10.3.
 - **Offload (off by default):**
   - large gathering results are saved to `<workspace>/.context-pacer/<date>-<run>/` and replaced by a labelled excerpt and the file's path;
   - a truncated `web_fetch` page saved on the host is copied in, so a sandboxed agent can read it;
-  - only for agents that can read their workspace: unsandboxed, or sandboxed with `workspaceAccess: "rw"`.
+  - saves go through OpenClaw's root-bounded file API, which refuses symlinks and never overwrites a file;
+  - for unsandboxed agents and Docker or Podman sandboxes; with `workspaceAccess` `"none"` or `"ro"`, into the sandbox workspace the agent's tools run in;
+  - skipped when a run's tools start outside the folder it would save in, such as a run with its own working directory.

@@ -6,7 +6,9 @@
   - the status line and its escalation;
   - config fallbacks and clamping;
   - unwrapping `tool_call`;
-  - offload: excerpts, saved files, the "Full page" copy, the path rules, the symlink refusal, cleanup and `.gitignore`;
+  - offload: excerpts, saved files, the "Full page" copy, the path rules, cleanup and `.gitignore`;
+  - symlinks: a symlinked save folder, a dangling symlink at the run marker, and a run folder swapped for a symlink between a path check and the write;
+  - where saves go for each sandbox mode, workspace access and backend, given the working directory a run reports;
   - the leak scan.
 - **Typecheck** against the OpenClaw 2026.10.3 plugin SDK, in CI.
 - **Replay** of 247 stored `web_search` and `web_fetch` results from one research agent on 2026.10.3 through offload with the default settings: 0 errors. What the model saw fell from 2.88 million characters to 1.02 million. That's size only, not answer quality.
@@ -24,7 +26,14 @@
 
 ## Not yet checked on a live gateway
 
-- Offload for unsandboxed agents. The plugin allows it there, but only an `rw` sandbox has been run live. The rule that skips offload for `none` and `ro` sandboxes is covered by unit tests only.
+- Offload for unsandboxed agents. The plugin allows it there, but only an `rw` sandbox has been run live.
+- Offload under `workspaceAccess` `none` and `ro`. Read from OpenClaw's source and covered by unit tests only:
+  - that `event.cwd` is the sandbox workspace on a live gateway;
+  - that a file saved there shows up in the container;
+  - that the agent's `read` opens it, including from a read-only `ro` mount.
+- The skips for backends other than Docker and Podman, for an unsandboxed or `rw` run whose tools start outside the agent workspace, and for a sandbox a person's role requires under `mode: "off"`. Unit tests only.
+- Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. Only a Podman sandbox has been run live.
+- Managed project worktrees. A session with one runs its tools in a private checkout, so the plugin saves there. Whether OpenClaw keeps, reconciles or publishes those files isn't checked.
 - Whether `llm_output` fires per model call or once per run, with the conversation-access grant. The request-size estimate covers the gap.
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
 - Whether agents read the saved files when they need more, or work from the excerpt alone.
@@ -35,6 +44,6 @@
 2. Search the gateway log for `context-pacer`. A warning there means a result was left unchanged.
 3. Ask a paced agent a question that needs several searches and fetches, then read its transcript:
    - each gathering result ends with a `[pacer]` line;
-   - with offload on, large results show an excerpt and a path, and a file exists at that path in the agent's workspace;
+   - with offload on, large results show an excerpt and a path, and a file exists at that path in the workspace the agent's tools run in. For a `none` or `ro` sandbox, that's the folder `openclaw sandbox explain --agent <id> --json` reports as `sandbox.effectiveHostWorkspaceRoot`;
    - nothing says "Tool output unavailable due to post-processing error".
 4. If the agent ran a `read` on a saved file, check that the read succeeded inside its sandbox.

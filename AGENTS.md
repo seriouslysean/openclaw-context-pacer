@@ -5,7 +5,7 @@ Rules for working in this repo.
 1. Never block, cap or rewrite a tool call; only what the model sees after the tool has run may change.
 2. Fail open: every error path returns `undefined` so OpenClaw keeps the original result, because a thrown error or malformed output replaces the result with an error notice.
 3. Keep OpenClaw's untrusted-content warning and markers on every excerpt and saved file of external content.
-4. Write only inside the agent's workspace, under `offload.directory`, and only where the agent can read it; refuse symlinks, never overwrite a file, and delete only folders carrying the plugin's marker.
+4. Write only inside the workspace the agent's tools run in, under `offload.directory`, and only where the agent can read it; refuse symlinks, never overwrite a file, and delete only folders carrying the plugin's marker.
 5. Hard-code no model name, context size or agent id; read limits from what OpenClaw reports for the run.
 6. Follow OpenClaw's own conventions for names and locations (the workspace OpenClaw resolves, camelCase keys with unit suffixes, `enabled` for optional features); where none exists, leave the setting unset rather than invent a default.
 7. Keep everything setup-agnostic: no agent names, hostnames, paths, chat ids or research topics from any real setup, in code, tests, docs, commits, issues or pull requests.

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { type MiddlewareHost, createMiddleware, hasConversationAccess, usageHooks, wrap } from '../src/index.ts';
+import { type MiddlewareHost, createMiddleware, createSaveDir, hasConversationAccess, usageHooks, wrap } from '../src/index.ts';
 import { Pacer, resolveConfig } from '../src/pacer.ts';
 import { type TextResult, defined, direct, fetchPayload, viaToolCall } from './fixtures.ts';
 
@@ -22,8 +22,7 @@ function host(overrides: Partial<MiddlewareHost> & { config?: unknown } = {}) {
   const value: MiddlewareHost = {
     pacer: new Pacer(resolveConfig(config ?? { agents: ['researcher'] })),
     warn: (message) => warnings.push(message),
-    canRead: () => true,
-    workspaceDir: () => {
+    saveDir: () => {
       throw new Error('no workspace in this test');
     },
     wrap,
@@ -71,7 +70,7 @@ test('a save that fails keeps the full result in context and logs why', async ()
   const ws = await workspace();
   const notAFolder = join(ws, 'file');
   await writeFile(notAFolder, '');
-  const { host: h, warnings } = host({ config: offloadOn, workspaceDir: () => notAFolder });
+  const { host: h, warnings } = host({ config: offloadOn, saveDir: () => notAFolder });
   const original = viaToolCall('web_fetch', fetchPayload());
   const out = defined(await apply(h, event('tool_call', original, { id: 'web_fetch', args: {} }), 'researcher'));
   assert.deepEqual(out.content.slice(0, -1), original.content);
@@ -83,7 +82,7 @@ test('a save that fails keeps the full result in context and logs why', async ()
 test('an unexpected error leaves the result unchanged rather than becoming an error notice', async () => {
   const { host: h, warnings } = host({
     config: offloadOn,
-    canRead: () => {
+    saveDir: () => {
       throw new Error('config unreadable');
     },
   });
@@ -94,7 +93,7 @@ test('an unexpected error leaves the result unchanged rather than becoming an er
 
 test('an error result is never offloaded', async () => {
   const ws = await workspace();
-  const { host: h } = host({ config: offloadOn, workspaceDir: () => ws });
+  const { host: h } = host({ config: offloadOn, saveDir: () => ws });
   const original = viaToolCall('web_fetch', fetchPayload());
   const out = defined(await apply(h, event('tool_call', original, { id: 'web_fetch', args: {} }, true), 'researcher'));
   assert.deepEqual(out.content.slice(0, -1), original.content);
@@ -103,16 +102,57 @@ test('an error result is never offloaded', async () => {
 
 test('an agent that cannot read its workspace gets the status line and no saved file', async () => {
   const ws = await workspace();
-  const { host: h } = host({ config: offloadOn, workspaceDir: () => ws, canRead: () => false });
+  const { host: h } = host({ config: offloadOn, saveDir: () => undefined });
   const original = viaToolCall('web_fetch', fetchPayload());
   const out = defined(await apply(h, event('tool_call', original, { id: 'web_fetch', args: {} }), 'researcher'));
   assert.deepEqual(out.content.slice(0, -1), original.content);
   assert.deepEqual(await readdir(ws), []);
 });
 
+test('under workspaceAccess none, a large result is saved in the sandbox workspace the tools run in, not the agent workspace', async () => {
+  const agentWs = await workspace();
+  const sandboxWs = await workspace();
+  const sandboxed = { agents: { defaults: { sandbox: { mode: 'all', workspaceAccess: 'none' } } } };
+  const { host: h, warnings } = host({ config: offloadOn });
+  h.saveDir = createSaveDir(sandboxed, () => agentWs, h.warn);
+  const original = viaToolCall('web_fetch', fetchPayload());
+  const out = await createMiddleware(h)({ ...event('tool_call', original, { id: 'web_fetch', args: {} }), cwd: sandboxWs }, ctx('researcher'));
+  const pointer = defined(texts(defined(out ? out.result : undefined)).at(-2));
+  const saved = defined(/saved at (\S+): read it/.exec(pointer)?.[1]);
+  assert.match(await readFile(join(sandboxWs, saved), 'utf8'), /Line 100 of the page body/);
+  assert.deepEqual(await readdir(agentWs), []);
+  assert.deepEqual(warnings, []);
+});
+
+test('an unsandboxed run with its own working directory keeps the result in context and says why', async () => {
+  const agentWs = await workspace();
+  const taskDir = await workspace();
+  const { host: h, warnings } = host({ config: offloadOn });
+  h.saveDir = createSaveDir({}, () => agentWs, h.warn);
+  const original = viaToolCall('web_fetch', fetchPayload());
+  const out = await createMiddleware(h)({ ...event('tool_call', original, { id: 'web_fetch', args: {} }), cwd: taskDir }, ctx('researcher'));
+  assert.deepEqual(defined(out ? out.result : undefined).content.slice(0, -1), original.content);
+  assert.deepEqual(await readdir(agentWs), []);
+  assert.deepEqual(await readdir(taskDir), []);
+  assert.deepEqual(warnings, ['offload skipped for agent "researcher": its tools run outside the agent workspace']);
+});
+
+test('a skipped offload is logged once per agent and reason', () => {
+  const warnings: string[] = [];
+  const remote = { agents: { defaults: { sandbox: { mode: 'all', backend: 'ssh', workspaceAccess: 'rw' } } } };
+  const saveDir = createSaveDir(remote, () => '/srv/agent-workspace', (message) => warnings.push(message));
+  assert.equal(saveDir('researcher'), undefined);
+  assert.equal(saveDir('researcher'), undefined);
+  assert.equal(saveDir('helper'), undefined);
+  assert.deepEqual(warnings, [
+    'offload skipped for agent "researcher": sandbox backend "ssh" may not see files saved on the gateway (needs docker or podman)',
+    'offload skipped for agent "helper": sandbox backend "ssh" may not see files saved on the gateway (needs docker or podman)',
+  ]);
+});
+
 test("an offloaded excerpt and its saved file carry OpenClaw's own untrusted-content label", async () => {
   const ws = await workspace();
-  const { host: h } = host({ config: offloadOn, workspaceDir: () => ws });
+  const { host: h } = host({ config: offloadOn, saveDir: () => ws });
   const original = viaToolCall('web_fetch', fetchPayload());
   const out = defined(await apply(h, event('tool_call', original, { id: 'web_fetch', args: {} }), 'researcher'));
   const [excerpt, pointer, status] = texts(out);

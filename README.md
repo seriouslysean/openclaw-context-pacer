@@ -18,13 +18,13 @@ The line escalates in two steps:
 1. With note tracking on (`notes.pathContains` set), after `notes.everyResults` results with no note, it asks for one. Without it, the line leaves notes out.
 2. Once the prompt reaches `wrapUpContextFraction` of the run's context budget, it says to stop gathering and write the answer.
 
-**Offload (optional, off by default).** A large result is saved to a file in the agent's workspace. The model gets an excerpt and the file's path in its place:
+**Offload (optional, off by default).** A large result is saved to a file in the workspace the agent's tools run in. The model gets an excerpt and the file's path in its place:
 
 ```text
 [pacer] Showing the first 3,962 of 6,337 characters. The full result is saved at .context-pacer/2026-10-15-3f9c1a2b/004-web_fetch.md: read it with offset and limit if you need more.
 ```
 
-Nothing is dropped: the agent can `read` the rest when it needs it. Offload applies only to agents that can read their workspace: unsandboxed, or sandboxed with `workspaceAccess: "rw"`. In a replay of 247 stored results from one research agent, offload cut the text the model saw by about 65%. That measures size only, not answer quality.
+Nothing is dropped: the agent can `read` the rest when it needs it. Offload applies to unsandboxed agents and to Docker or Podman sandboxes. With `workspaceAccess` `"none"` (OpenClaw's default) or `"ro"`, files go in the sandbox workspace rather than the agent workspace. In a replay of 247 stored results from one research agent, offload cut the text the model saw by about 65%. That measures size only, not answer quality.
 
 ## Install
 
@@ -43,7 +43,7 @@ openclaw gateway restart
 
 To check that it loaded, run `openclaw plugins inspect context-pacer --runtime --json`.
 
-To turn it off, run `openclaw plugins disable context-pacer` and restart. Saved files stay in each agent's `.context-pacer/` folder until you delete them.
+To turn it off, run `openclaw plugins disable context-pacer` and restart. Saved files stay in the `.context-pacer/` folder of each workspace they were saved in until you delete them.
 
 ## Bounds
 

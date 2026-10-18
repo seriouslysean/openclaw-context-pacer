@@ -18,15 +18,15 @@ export interface NotesConfig {
 }
 
 export interface OffloadConfig {
-  /** Save large gathering results to the agent's workspace and show an excerpt instead. Off by default. */
+  /** Save large gathering results to the workspace the agent's tools run in and show an excerpt instead. Off by default. */
   enabled: boolean;
   /** Offload a result once the text the model would see exceeds this many characters. */
   thresholdChars: number;
   /** Characters of the saved result shown in its place. */
   excerptChars: number;
   /**
-   * Workspace-relative folder for saved results, with one subfolder per run. It has to be inside the workspace,
-   * because that is the only place a sandboxed agent can read.
+   * Workspace-relative folder for saved results, with one subfolder per run. It has to be inside the workspace the
+   * agent's tools run in, because that is the only place a sandboxed agent can read.
    */
   directory: string;
   /** Run folders kept in the directory; older ones the pacer created are deleted. */

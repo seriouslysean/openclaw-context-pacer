@@ -55,14 +55,25 @@ OpenClaw gates the `llm_output` hook, which reports usage, and the `agent_end` h
 
 ## Where saved files go
 
-Offloaded results are saved under `<workspace>/<offload.directory>/<YYYY-MM-DD>-<run>/<NNN>-<tool>.md`. The date is the gateway's local date when the run first saves, and `<run>` is the first eight letters and digits of OpenClaw's run id.
+Offloaded results are saved under `<workspace>/<offload.directory>/<YYYY-MM-DD>-<run>/<NNN>-<tool>.md`, where `<workspace>` is the workspace the agent's tools run in. The date is the gateway's local date when the run first saves, and `<run>` is the first eight letters and digits of OpenClaw's run id.
 
-- **Inside the workspace.** The plugin gets the path from OpenClaw (`runtime.agent.resolveAgentWorkspaceDir`), so it follows a per-agent `workspace` setting.
-- **Only where the agent can read it.** A sandboxed agent sees that workspace only with `workspaceAccess: "rw"`; with `"none"` (OpenClaw's default) or `"ro"`, its tools work in a separate sandbox workspace. So offload runs only for unsandboxed agents and `rw` sandboxes, and otherwise passes results through with a one-time warning in the gateway log. The check reads `agents.entries.<id>.sandbox`, then `agents.defaults.sandbox`. Sandboxes required by a person's role aren't visible in config and aren't detected.
+- **In the workspace the agent's tools run in.**
+
+  | Agent | Saved in |
+  |---|---|
+  | Unsandboxed | The agent workspace, from OpenClaw (`runtime.agent.resolveAgentWorkspaceDir`), so it follows a per-agent `workspace` setting. Skipped when the run has its own working directory |
+  | Sandboxed, `workspaceAccess: "rw"` | The agent workspace, mounted read-write in the sandbox |
+  | Sandboxed, `"none"` (OpenClaw's default) | The sandbox workspace under OpenClaw's sandboxes folder, mounted read-write where the tools start |
+  | Sandboxed, `"ro"` | The sandbox workspace, mounted read-only where the tools start; the agent workspace is at `/agent` |
+
+  For a sandboxed run, the plugin takes the folder from OpenClaw: the working directory it reports with each tool result. `openclaw sandbox explain --agent <id> --json` shows the same folder as `sandbox.effectiveHostWorkspaceRoot`.
+- **Only where the agent can read it.** Only Docker and Podman mount a gateway folder into the sandbox; SSH and Crabbox seed a remote workspace once, and OpenShell runs remotely or syncs around `exec` (OpenClaw 2026.10.3, [SSH](https://docs.openclaw.ai/gateway/sandboxing/ssh-backend), [OpenShell](https://docs.openclaw.ai/gateway/sandboxing/openshell-backend), [Crabbox](https://docs.openclaw.ai/gateway/sandboxing/crabbox-backend)). So on any other backend, including one added by a plugin, offload passes results through with a one-time warning in the gateway log. The saved path is relative, so it does the same when an unsandboxed or `rw` run's tools start outside the agent workspace, or a `none` or `ro` run reports no working directory. An unsandboxed run starts elsewhere when it has its own working directory: an agent's `cwd` setting, a spawned session's, or the CLI's. Its `read` resolves relative paths there, and `tools.fs.workspaceOnly` keeps it there (OpenClaw 2026.10.3, `src/agents/conversation-capability-profile.ts`, `src/agents/core-coding-tools.ts`). The check reads `agents.entries.<id>.sandbox`, then `agents.defaults.sandbox`. A sandbox required by a person's role isn't visible in config; under `mode: "off"` its run reports the sandbox workspace as its working directory, so it is skipped the same way.
 - **Kept out of git backups.** OpenClaw recommends backing up the workspace with git. The plugin writes a `.gitignore` that ignores everything in the directory, as OpenClaw does for its own staged inputs. An existing `.gitignore` there is left alone.
 - **Files are private:** mode 0600, in folders with mode 0700.
-- **Path rules:** `offload.directory` must be a plain relative path; a leading dot is fine, `.` and `..` are not. Anything else falls back to the default. The plugin refuses symlinked folders and never overwrites a file.
+- **Path rules:** `offload.directory` must be a plain relative path; a leading dot is fine, `.` and `..` are not. Anything else falls back to the default.
+- **No symlinks, no overwrites:** unless the workspace is read-only to it, the agent can write there too, so every save goes through OpenClaw's root-bounded file API (`root` from `openclaw/plugin-sdk/security-runtime`). It refuses a symlink anywhere below the workspace, including a dangling one and one swapped in during a save, and never replaces an existing file. How strictly a swap is caught depends on the platform and fs-safe's native helper (`@openclaw/fs-safe` 0.24.2, bundled with OpenClaw 2026.10.3, `docs/security-model.md`).
 - **Cleanup:** each run folder holds a `.context-pacer-run` marker. When a run saves its first file, marked folders beyond the newest `offload.maxRuns` are deleted. Folders without the marker are never touched.
+- **Shared sandbox workspaces:** under `none` or `ro`, the sandbox workspace follows the sandbox scope. With `scope: "shared"`, every sandboxed agent saves into the same one, so their run folders share one `offload.maxRuns` budget, and cleanup can delete another agent's older folders (OpenClaw 2026.10.3, `src/agents/sandbox/shared.ts`).
 
 ## How the defaults were chosen
 

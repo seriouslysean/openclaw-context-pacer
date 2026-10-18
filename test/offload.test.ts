@@ -1,8 +1,9 @@
 import { strict as assert } from 'node:assert';
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import fsp, { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { after, mock, test } from 'node:test';
 import { GITIGNORE, SENTINEL, excerpt, offload, runFolder } from '../src/offload.ts';
 import { resolveConfig } from '../src/pacer.ts';
 import { resolveInner } from '../src/tool-result.ts';
@@ -111,6 +112,44 @@ test('a symlinked save folder is refused', async () => {
   assert.deepEqual(await readdir(elsewhere), []);
 });
 
+test('a dangling symlink at the run marker is refused, and nothing is created where it points', async () => {
+  const ws = await workspace();
+  const elsewhere = await workspace();
+  const runDir = join(ws, '.context-pacer', '2026-01-02-run0001a');
+  await mkdir(runDir, { recursive: true });
+  await symlink(join(elsewhere, 'planted'), join(runDir, SENTINEL));
+  await assert.rejects(offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload()))));
+  assert.deepEqual(await readdir(elsewhere), []);
+});
+
+test('a run folder swapped for a symlink between a path check and the write gets nothing written through it', async () => {
+  const ws = await workspace();
+  const elsewhere = await workspace();
+  const runDir = join(ws, '.context-pacer', '2026-01-02-run0001a');
+  const real = fsp.lstat;
+  let swapped = false;
+  // The swap fires on a `node:fs/promises` check of the run folder, the window an agent with `exec` could race in a
+  // check-then-write save. The SDK's `root` makes no such call, so this guards against that pattern coming back; how
+  // `root` itself catches a swap is fs-safe's documented guarantee (docs/security-model.md).
+  const lstat = mock.method(fsp, 'lstat', async (path: unknown, ...rest: unknown[]) => {
+    const info: unknown = await Reflect.apply(real, fsp, [path, ...rest]);
+    if (!swapped && String(path).endsWith('/.context-pacer/2026-01-02-run0001a')) {
+      swapped = true;
+      await rename(runDir, `${runDir}-moved`);
+      await symlink(elsewhere, runDir);
+    }
+    return info;
+  });
+  syncBuiltinESMExports();
+  try {
+    await offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload()))).catch(() => undefined);
+  } finally {
+    lstat.mock.restore();
+    syncBuiltinESMExports();
+  }
+  assert.deepEqual(await readdir(elsewhere), []);
+});
+
 test('old run folders are pruned, but only ones the pacer created', async () => {
   const ws = await workspace();
   const small = resolveConfig({ offload: { enabled: true, maxRuns: 2 } }).offload;
@@ -124,6 +163,23 @@ test('old run folders are pruned, but only ones the pacer created', async () => 
   await mkdir(join(root, 'mine'));
   await offload(small, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
   assert.deepEqual((await readdir(root)).toSorted(), ['.gitignore', '2026-01-02-run0001a', 'mine', 'old3']);
+});
+
+test('cleanup of a forged run folder removes the links inside it, not what they point to', async () => {
+  const ws = await workspace();
+  const elsewhere = await workspace();
+  await mkdir(join(elsewhere, 'sub'));
+  await writeFile(join(elsewhere, 'keep.txt'), 'outside');
+  const forged = join(ws, '.context-pacer', 'forged');
+  await mkdir(join(forged, 'inner'), { recursive: true });
+  await writeFile(join(forged, SENTINEL), '');
+  await symlink(elsewhere, join(forged, 'dir-link'));
+  await symlink(join(elsewhere, 'keep.txt'), join(forged, 'file-link'));
+  await symlink(join(elsewhere, 'sub'), join(forged, 'inner', 'deep-link'));
+  const one = resolveConfig({ offload: { enabled: true, maxRuns: 1 } }).offload;
+  await offload(one, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['.gitignore', '2026-01-02-run0001a']);
+  assert.deepEqual((await readdir(elsewhere)).toSorted(), ['keep.txt', 'sub']);
 });
 
 test('an image result is never offloaded', async () => {
