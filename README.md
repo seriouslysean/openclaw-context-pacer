@@ -70,7 +70,7 @@ npm ci --ignore-scripts
 npm run lint && npm run typecheck && npm test
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 
 ## License
 
