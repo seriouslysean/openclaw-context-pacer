@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { DEFAULTS, Pacer, resolveConfig } from '../src/pacer.ts';
 import { isErrorResult, readable, resolveInner, spillPath, textOf, unwrapExternal } from '../src/tool-result.ts';
-import { direct, failedCall, fetchPayload, searchPayload, viaToolCall, wrapLikeOpenClaw } from './fixtures.ts';
+import { defined, direct, failedCall, fetchPayload, searchPayload, viaToolCall, wrapLikeOpenClaw } from './fixtures.ts';
 
 test('a direct call resolves to itself', () => {
   const result = direct(searchPayload());
@@ -18,7 +18,7 @@ test('a tool_call resolves to the tool that ran and its own result', () => {
   assert.equal(inner.name, 'web_fetch');
   assert.equal(inner.wrapped, true);
   assert.deepEqual(inner.args, { url: 'https://example.com/guide' });
-  assert.equal(textOf(inner.result!), JSON.stringify(fetchPayload(), null, 2));
+  assert.equal(textOf(defined(inner.result)), JSON.stringify(fetchPayload(), null, 2));
 });
 
 test('a failed tool_call takes its name from the catalog id', () => {
@@ -31,13 +31,13 @@ test('a failed tool_call takes its name from the catalog id', () => {
 test('the pacer counts gathering results that arrive through tool_call', () => {
   const pacer = new Pacer(resolveConfig({ agents: ['researcher'] }));
   const inner = resolveInner('tool_call', { id: 'web_search', args: { query: 'q' } }, viaToolCall('web_search', searchPayload()));
-  assert.match(pacer.onToolResult('r1', inner.name, inner.args)!, /1 gathering result so far/);
+  assert.match(defined(pacer.onToolResult('r1', inner.name, inner.args)), /1 gathering result so far/);
   assert.equal(pacer.onToolResult('r1', 'tool_call', {}), undefined);
 });
 
 test('tool_call roughly doubles what the model sees', () => {
-  const directText = textOf(direct(fetchPayload()))!;
-  const wrappedText = textOf(viaToolCall('web_fetch', fetchPayload()))!;
+  const directText = defined(textOf(direct(fetchPayload())));
+  const wrappedText = defined(textOf(viaToolCall('web_fetch', fetchPayload())));
   assert.ok(wrappedText.length > directText.length * 2);
 });
 

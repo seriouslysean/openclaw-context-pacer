@@ -6,17 +6,18 @@
  * context share comes from the budget and usage OpenClaw reports for the run, so nothing about the model is
  * hard-coded.
  */
+import { isRecord } from './tool-result.ts';
 
-export type NotesConfig = {
+export interface NotesConfig {
   /** A write counts as a note when its path contains this text. Unset means note tracking is off. */
   pathContains?: string;
   /** Tools that can write a note. */
   tools: string[];
   /** Ask for a note once this many gathering results pass without one. */
   everyResults: number;
-};
+}
 
-export type OffloadConfig = {
+export interface OffloadConfig {
   /** Save large gathering results to the agent's workspace and show an excerpt instead. Off by default. */
   enabled: boolean;
   /** Offload a result once the text the model would see exceeds this many characters. */
@@ -32,9 +33,9 @@ export type OffloadConfig = {
   maxRuns: number;
   /** Most bytes saved per run; past this, results pass through unchanged. */
   maxBytesPerRun: number;
-};
+}
 
-export type PacerConfig = {
+export interface PacerConfig {
   /** Agent ids the pacer applies to. Empty (the default) means it does nothing until configured. */
   agents: string[];
   /** Tools whose results count as gathering and receive the status line. */
@@ -45,7 +46,7 @@ export type PacerConfig = {
   /** Most runs tracked in memory at once; the oldest is dropped beyond this. */
   maxTrackedRuns: number;
   offload: OffloadConfig;
-};
+}
 
 export const DEFAULTS: PacerConfig = {
   agents: [],
@@ -63,7 +64,7 @@ export const DEFAULTS: PacerConfig = {
   },
 };
 
-type RunState = {
+interface RunState {
   gathers: number;
   notes: number;
   sinceNote: number;
@@ -74,10 +75,10 @@ type RunState = {
   savedBytes: number;
   /** Saved-file folder, named when the run first saves so a run past midnight keeps one folder. */
   folder?: string;
-};
+}
 
 function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return isRecord(value) ? value : {};
 }
 
 function stringList(value: unknown, fallback: string[], allowEmpty = false): string[] {
@@ -92,7 +93,9 @@ function clamp(value: unknown, min: number, max: number, fallback: number): numb
 /** A relative path of plain segments, so saved files can't land outside the agent's workspace. */
 function directoryPath(value: unknown): string {
   const fallback = DEFAULTS.offload.directory;
-  if (typeof value !== 'string') return fallback;
+  if (typeof value !== 'string') {
+    return fallback;
+  }
   const segments = value.split('/').filter((s) => s.length > 0);
   const plain = segments.length > 0 && segments.every((s) => /^[A-Za-z0-9._-]+$/.test(s) && !/^\.+$/.test(s));
   return plain && !value.startsWith('/') ? segments.join('/') : fallback;
@@ -128,10 +131,12 @@ export function resolveConfig(raw: unknown): PacerConfig {
 }
 
 function writePath(args: unknown): string | undefined {
-  if (!args || typeof args !== 'object') return undefined;
-  const a = args as Record<string, unknown>;
+  const a = record(args);
   for (const key of ['path', 'file_path', 'filePath', 'file']) {
-    if (typeof a[key] === 'string') return a[key] as string;
+    const value = a[key];
+    if (typeof value === 'string') {
+      return value;
+    }
   }
   return undefined;
 }
@@ -153,8 +158,11 @@ export class Pacer {
     if (!s) {
       s = { gathers: 0, notes: 0, sinceNote: 0, savedBytes: 0 };
       this.runs.set(runId, s);
-      while (this.runs.size > this.config.maxTrackedRuns) {
-        this.runs.delete(this.runs.keys().next().value as string);
+      for (const oldest of this.runs.keys()) {
+        if (this.runs.size <= this.config.maxTrackedRuns) {
+          break;
+        }
+        this.runs.delete(oldest);
       }
     }
     return s;
@@ -166,9 +174,15 @@ export class Pacer {
    */
   recordUsage(runId: string, budget?: number, promptTokens?: number, approx = false): void {
     const s = this.state(runId);
-    if (typeof budget === 'number' && budget > 0) s.budget = budget;
-    if (typeof promptTokens !== 'number' || promptTokens <= 0) return;
-    if (approx && s.promptTokens !== undefined && !s.approx && promptTokens <= s.promptTokens) return;
+    if (typeof budget === 'number' && budget > 0) {
+      s.budget = budget;
+    }
+    if (typeof promptTokens !== 'number' || promptTokens <= 0) {
+      return;
+    }
+    if (approx && s.promptTokens !== undefined && !s.approx && promptTokens <= s.promptTokens) {
+      return;
+    }
     s.promptTokens = promptTokens;
     s.approx = approx;
   }
@@ -185,7 +199,9 @@ export class Pacer {
       }
       return undefined;
     }
-    if (!gatherTools.includes(toolName)) return undefined;
+    if (!gatherTools.includes(toolName)) {
+      return undefined;
+    }
     const s = this.state(runId);
     s.gathers += 1;
     s.sinceNote += 1;
@@ -207,7 +223,9 @@ export class Pacer {
   /** Reserves room for a saved file within the run's byte limit; false means don't save it. */
   reserveBytes(runId: string, bytes: number): boolean {
     const s = this.state(runId);
-    if (s.savedBytes + bytes > this.config.offload.maxBytesPerRun) return false;
+    if (s.savedBytes + bytes > this.config.offload.maxBytesPerRun) {
+      return false;
+    }
     s.savedBytes += bytes;
     return true;
   }
@@ -232,7 +250,9 @@ export function statusLine(s: Omit<RunState, 'savedBytes' | 'folder'>, config: P
   if (tracking) {
     parts.push(s.notes === 0 ? 'no notes written yet' : `last note ${s.sinceNote} result${s.sinceNote === 1 ? '' : 's'} ago`);
   }
-  if (share !== undefined) parts.push(`context about ${Math.round(share * 100)}% of budget${s.approx ? ' (approx)' : ''}`);
+  if (share !== undefined) {
+    parts.push(`context about ${Math.round(share * 100)}% of budget${s.approx ? ' (approx)' : ''}`);
+  }
   let advice = '';
   if (share !== undefined && share >= config.wrapUpContextFraction) {
     advice = ` Context is filling up: stop gathering and write the answer${tracking ? ' from your notes' : ''}.`;

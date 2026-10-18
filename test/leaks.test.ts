@@ -22,7 +22,9 @@ export function findLeaks(text: string): string[] {
   const found: string[] = [];
   for (const [name, shape] of SHAPES) {
     const match = shape.exec(text);
-    if (match) found.push(`${name}: ${match[0]}`);
+    if (match) {
+      found.push(`${name}: ${match[0]}`);
+    }
   }
   return found;
 }
@@ -30,10 +32,15 @@ export function findLeaks(text: string): string[] {
 async function files(dir: string): Promise<string[]> {
   const out: string[] = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (SKIP.has(entry.name)) continue;
+    if (SKIP.has(entry.name)) {
+      continue;
+    }
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...(await files(path)));
-    else if (entry.isFile()) out.push(path);
+    if (entry.isDirectory()) {
+      out.push(...(await files(path)));
+    } else if (entry.isFile()) {
+      out.push(path);
+    }
   }
   return out;
 }
@@ -47,7 +54,9 @@ test('the scan catches each shape it claims to', () => {
     ['agent:', 'helper:', 'main'],
     ['https://claude.ai/code/', 'session/abc'],
   ].map((parts) => parts.join(''));
-  for (const sample of samples) assert.equal(findLeaks(sample).length, 1, sample);
+  for (const sample of samples) {
+    assert.equal(findLeaks(sample).length, 1, sample);
+  }
   assert.deepEqual(findLeaks(['bot', '@', 'users.noreply.github.com'].join('')), []);
   assert.deepEqual(findLeaks('https://docs.openclaw.ai/plugins and plugins.entries.context-pacer.config'), []);
 });
@@ -56,7 +65,9 @@ test('no file in the repository identifies a setup', async () => {
   const problems: string[] = [];
   for (const path of await files(ROOT)) {
     const text = await readFile(path, 'utf8');
-    for (const leak of findLeaks(text)) problems.push(`${relative(ROOT, path)}: ${leak}`);
+    for (const leak of findLeaks(text)) {
+      problems.push(`${relative(ROOT, path)}: ${leak}`);
+    }
   }
   assert.deepEqual(problems, []);
 });
