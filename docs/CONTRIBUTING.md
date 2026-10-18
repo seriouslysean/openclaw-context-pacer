@@ -27,7 +27,7 @@ So update the entry in the config file, check it with `openclaw config validate`
 
 Open an issue before writing code, even for a one-line fix, so the reason outlives the diff. Record what the wrong behaviour was, ideally with the tool result or transcript excerpt that shows it, redacted as described below.
 
-Branch from `main` and name the branch after the issue, as in `14-excerpt-cuts-mid-word`. Open a pull request with `Closes #14`. Merge with a merge commit, not a squash, so each commit on `main` can be reverted on its own.
+Branch from `main` and name the branch after the issue, as in `14-excerpt-cuts-mid-word`. Open a pull request with `Closes #14`. Merge with a squash (`gh pr merge <n> --squash --delete-branch`): the PR title becomes the commit subject and the description the commit message, so write both for `main`.
 
 ## A fix ships with a test that fails without it
 
@@ -52,8 +52,8 @@ It matches shapes, not names, so it can't catch everything. An agent id, a hostn
 
 ## OpenClaw versions
 
-The plugin API is experimental upstream. `package.json` pins the OpenClaw version it was built and tested against (`openclaw.build`, `openclaw.compat`). Raising it means re-running the tests and the checks in [docs/verification.md](docs/verification.md) on that version, and saying in the changelog what changed.
+The plugin API is experimental upstream. `package.json` pins the OpenClaw version it was built and tested against (`openclaw.build`, `openclaw.compat`). Raising it means re-running the tests and the checks in [docs/verification.md](verification.md) on that version, and saying in the changelog what changed.
 
 ## Rules for the code
 
-See [AGENTS.md](AGENTS.md).
+See [AGENTS.md](../AGENTS.md).
