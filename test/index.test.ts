@@ -3,7 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { type MiddlewareHost, createMiddleware, createSaveDir, hasConversationAccess, usageHooks, wrap } from '../src/index.ts';
+import { type MiddlewareHost, type PluginHost, createMiddleware, createSaveDir, hasConversationAccess, registerPacer, usageHooks, wrap } from '../src/index.ts';
 import { Pacer, resolveConfig } from '../src/pacer.ts';
 import { type TextResult, defined, direct, fetchPayload, viaToolCall } from './fixtures.ts';
 
@@ -49,6 +49,27 @@ async function apply(h: MiddlewareHost, e: ReturnType<typeof event>, agentId: st
 }
 
 const offloadOn = { agents: ['researcher'], offload: { enabled: true } };
+
+/** Registers the pacer with a stand-in for OpenClaw's plugin API and returns what it registered. */
+function register(pluginConfig: Record<string, unknown>, config: PluginHost['config'] = {}, workspaceDir = '/srv/agent-workspace') {
+  const hooks = new Map<string, unknown>();
+  const middleware: unknown[] = [];
+  const warnings: string[] = [];
+  const api: PluginHost = {
+    config,
+    pluginConfig,
+    logger: { warn: (message) => warnings.push(message) },
+    on: (hookName: string, handler: unknown) => {
+      hooks.set(hookName, handler);
+    },
+    registerAgentToolResultMiddleware: (handler) => {
+      middleware.push(handler);
+    },
+    runtime: { agent: { resolveAgentWorkspaceDir: () => workspaceDir } },
+  };
+  registerPacer(api);
+  return { hooks, middleware, warnings };
+}
 
 test('a result for an agent that is not paced is left unchanged', async () => {
   assert.equal(await apply(host().host, event('web_fetch', direct(fetchPayload())), 'someone-else'), undefined);
@@ -195,6 +216,14 @@ test("agent_end drops the run's counters", () => {
   pacer.onToolResult('r1', 'web_fetch', {});
   hooks.agentEnd({}, { runId: 'r1' });
   assert.equal(pacer.trackedRuns, 0);
+});
+
+test('registration adds the middleware and the metadata hooks, and the conversation hooks only with the grant', () => {
+  const plain = register({ agents: ['researcher'] });
+  assert.deepEqual([...plain.hooks.keys()], ['model_call_started', 'model_call_ended']);
+  assert.equal(plain.middleware.length, 1);
+  const granted = register({ agents: ['researcher'] }, { plugins: { entries: { 'context-pacer': { hooks: { allowConversationAccess: true } } } } });
+  assert.deepEqual([...granted.hooks.keys()], ['model_call_started', 'model_call_ended', 'llm_output', 'agent_end']);
 });
 
 test('the conversation hooks are used only when the operator grants conversation access', () => {
