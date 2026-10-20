@@ -14,3 +14,7 @@ First version, built and tested against OpenClaw 2026.10.3.
   - saves go through OpenClaw's root-bounded file API, which refuses symlinks and never overwrites a file;
   - for unsandboxed agents and Docker or Podman sandboxes; with `workspaceAccess` `"none"` or `"ro"`, into the sandbox workspace the agent's tools run in;
   - skipped when a run's tools start outside the folder it would save in, such as a run with its own working directory.
+
+### Fixed
+
+- **Config changes:** the sandbox and workspace settings that decide where results are saved were read once, when the plugin registered. OpenClaw applies changes to `agents.*` sandbox and workspace settings without reloading plugins, so a changed sandbox backend or workspace access went unseen until a restart. They're now read from the current config for each result.

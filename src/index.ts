@@ -5,7 +5,9 @@ import { Pacer, appendStatus, resolveConfig } from './pacer.ts';
 import { offloadTarget } from './sandbox.ts';
 import { isErrorResult, isRecord, resolveInner } from './tool-result.ts';
 
-type Middleware = Parameters<OpenClawPluginApi['registerAgentToolResultMiddleware']>[0];
+type Api = OpenClawPluginApi;
+type Middleware = Parameters<Api['registerAgentToolResultMiddleware']>[0];
+type CurrentConfig = ReturnType<Api['runtime']['config']['current']>;
 
 interface Usage {
   input?: number;
@@ -29,6 +31,23 @@ export interface MiddlewareHost {
    */
   saveDir: (agentId: string, cwd?: string) => string | undefined;
   wrap: Wrap;
+}
+
+/** The parts of OpenClaw's plugin API the pacer uses. `register` passes OpenClaw's own, and tests pass a stand-in. */
+export interface PluginHost {
+  config: Api['config'];
+  pluginConfig?: Api['pluginConfig'];
+  logger?: Partial<Pick<Api['logger'], 'warn'>>;
+  on: Api['on'];
+  registerAgentToolResultMiddleware: Api['registerAgentToolResultMiddleware'];
+  runtime: {
+    agent: {
+      // A method, so OpenClaw's resolver, typed for a mutable config, accepts the frozen one `current()` returns. It
+      // only reads it, and caches by frozen config (2026.10.3 and 2026.10.4, src/agents/agent-scope-config.ts).
+      resolveAgentWorkspaceDir(config: CurrentConfig, agentId: string): string;
+    };
+    config: Pick<Api['runtime']['config'], 'current'>;
+  };
 }
 
 const PLUGIN_ID = 'context-pacer';
@@ -94,11 +113,16 @@ export function usageHooks(pacer: Pacer) {
 /**
  * Where an agent's results are saved: only where the agent can open what it is pointed to. Otherwise results pass
  * through with the status line only, and the reason is logged once per agent.
+ *
+ * `config` returns the gateway's config at the time of each result. OpenClaw applies changes to `agents.*` sandbox and
+ * workspace settings without reloading plugins, so the snapshot from registration goes stale (2026.10.3 and 2026.10.4,
+ * src/gateway/config-reload-plan.ts; docs/plugins/sdk-runtime.md, `api.config`).
  */
-export function createSaveDir(config: unknown, workspaceDir: (agentId: string) => string, warn: (message: string) => void) {
+export function createSaveDir<C>(config: () => C, workspaceDir: (config: C, agentId: string) => string, warn: (message: string) => void) {
   const warned = new Set<string>();
   return (agentId: string, cwd?: string): string | undefined => {
-    const target = offloadTarget(config, agentId, workspaceDir(agentId), cwd);
+    const c = config();
+    const target = offloadTarget(c, agentId, workspaceDir(c, agentId), cwd);
     if ('dir' in target) {
       return target.dir;
     }
@@ -159,32 +183,35 @@ export function createMiddleware(host: MiddlewareHost): Middleware {
   };
 }
 
+/** Registers the pacer's hooks and middleware with the host. */
+export function registerPacer(api: PluginHost): void {
+  const pacer = new Pacer(resolveConfig(api.pluginConfig));
+  const warn = (message: string) => api.logger?.warn?.(`[${PLUGIN_ID}] ${message}`);
+  const hooks = usageHooks(pacer);
+  api.on('model_call_started', hooks.modelCallStarted);
+  api.on('model_call_ended', hooks.modelCallEnded);
+  // `llm_output` and `agent_end` also carry the conversation, so OpenClaw admits them for an installed plugin only
+  // when the operator sets `hooks.allowConversationAccess`. Without that grant the pacer works from the metadata hooks
+  // above, and `maxTrackedRuns` bounds the counters instead of `agent_end`.
+  if (hasConversationAccess(api.config)) {
+    api.on('llm_output', hooks.llmOutput);
+    api.on('agent_end', hooks.agentEnd);
+  }
+
+  api.registerAgentToolResultMiddleware(
+    createMiddleware({
+      pacer,
+      warn,
+      saveDir: createSaveDir(() => api.runtime.config.current(), (config, agentId) => api.runtime.agent.resolveAgentWorkspaceDir(config, agentId), warn),
+      wrap,
+    }),
+    { runtimes: ['openclaw'] },
+  );
+}
+
 export default definePluginEntry({
   id: PLUGIN_ID,
   name: 'Context Pacer',
   description: 'Paces agents that gather with tools: a status line on each gathering result, with nudges to write notes and to finish from them, and optionally large results moved to files.',
-  register(api) {
-    const pacer = new Pacer(resolveConfig(api.pluginConfig));
-    const warn = (message: string) => api.logger?.warn?.(`[${PLUGIN_ID}] ${message}`);
-    const hooks = usageHooks(pacer);
-    api.on('model_call_started', hooks.modelCallStarted);
-    api.on('model_call_ended', hooks.modelCallEnded);
-    // `llm_output` and `agent_end` also carry the conversation, so OpenClaw admits them for an installed plugin only
-    // when the operator sets `hooks.allowConversationAccess`. Without that grant the pacer works from the metadata hooks
-    // above, and `maxTrackedRuns` bounds the counters instead of `agent_end`.
-    if (hasConversationAccess(api.config)) {
-      api.on('llm_output', hooks.llmOutput);
-      api.on('agent_end', hooks.agentEnd);
-    }
-
-    api.registerAgentToolResultMiddleware(
-      createMiddleware({
-        pacer,
-        warn,
-        saveDir: createSaveDir(api.config, (agentId) => api.runtime.agent.resolveAgentWorkspaceDir(api.config, agentId), warn),
-        wrap,
-      }),
-      { runtimes: ['openclaw'] },
-    );
-  },
+  register: registerPacer,
 });

@@ -33,6 +33,7 @@
   - that the agent's `read` opens it, including from a read-only `ro` mount.
 - The skips for backends other than Docker and Podman, for an unsandboxed or `rw` run whose tools start outside the agent workspace, and for a sandbox a person's role requires under `mode: "off"`. Unit tests only.
 - Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. Only a Podman sandbox has been run live.
+- That a change to `agents.*` sandbox or workspace settings reaches the plugin through `api.runtime.config.current()` without a restart, and that a change to the plugin's entry replaces its instance. Read from OpenClaw's docs and source (2026.10.3 and 2026.10.4, `docs/plugins/sdk-runtime.md`, `src/gateway/config-reload-plan.ts`). The unit tests cover only that the pacer reads `current()` for each result.
 - Managed project worktrees. A session with one runs its tools in a private checkout, so the plugin saves there. Whether OpenClaw keeps, reconciles or publishes those files isn't checked.
 - Whether `llm_output` fires per model call or once per run, with the conversation-access grant. The request-size estimate covers the gap.
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
