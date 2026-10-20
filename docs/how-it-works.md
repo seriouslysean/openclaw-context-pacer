@@ -17,9 +17,32 @@ State is per-run counters, at most `maxTrackedRuns` runs at once. Without offloa
 - **Sandbox and workspace settings** (`agents.*`) are read from the gateway's current config for each result (`api.runtime.config.current()`). With the default hybrid reload, OpenClaw applies changes to them without reloading plugins, so the snapshot from registration would go stale (2026.10.3 and 2026.10.4, `src/gateway/config-reload-plan.ts`).
 - **A run in progress during a change.** OpenClaw resolves a run's sandbox when each attempt starts (2026.10.3 and 2026.10.4, `src/agents/workspace-sandbox.ts`), but the plugin judges each result by the settings current at that moment. So during a change, a run still in progress is judged by the new settings. Switching from a remote backend to Docker or Podman during a run can point that run at a file its tools can't see. Change backends between runs.
 
+## Every agent's results
+
+Registering tool-result middleware affects more than the agents in `agents`. While any middleware is registered for the `openclaw` runtime, OpenClaw checks every tool result of every agent on that runtime against its middleware limits before it calls any middleware, including results the pacer then leaves alone (OpenClaw 2026.10.3 and 2026.10.4, `src/agents/harness/tool-result-middleware.ts`). A result inside the limits passes unchanged. Past them:
+
+| Part | Limit | Past it |
+|---|---|---|
+| Text block | 100,000 characters | Cut to 100,000 |
+| Image block | 5,000,000 characters of data | Dropped, unless no block would be left |
+| Content blocks | 200 | The rest dropped |
+| Other block types | Text and image only | Dropped, unless none would be left; nested tool-result blocks are flattened |
+| `details` | 100,000 bytes of UTF-8 JSON, 1,000 keys, 20 levels | Replaced by `{ "truncated": true, "originalSizeBytes": n }` |
+| `details` values JSON can't hold | Functions, repeated objects such as cycles, bigints | Functions and repeats dropped, bigints turned into strings |
+
+A test hands the pacer's middleware to OpenClaw's own middleware runner from the SDK and checks the text-block and `details` size rows, the `details` limit at its exact byte boundary.
+
+Paced agents' results pass the same check before the pacer sees them. A `tool_call` result whose `details` pass 100,000 bytes reaches the pacer without the tool's own result, so it gets the status line but isn't offloaded. The limit is in bytes, and under `tool_call` the page text is in `details` twice. So a `web_fetch` at its default 20,000 characters can cross it when the page is in a script that takes three bytes per character in UTF-8, such as Chinese or Japanese. A page in ASCII needs about 50,000 characters to cross it, which takes raising both `maxChars` and `tools.web.fetch.maxCharsCap`, whose defaults are 20,000 ([web fetch](https://docs.openclaw.ai/tools/web-fetch)).
+
+The pacer can't limit this in 2026.10.3 or 2026.10.4:
+- Registration takes `runtimes` and a tool `matcher`, with no agent scope. The `openclaw` runtime applies the limits before it checks a handler's matcher (`src/plugins/registry-registrars-tools-hooks.ts`).
+- Registering only when `agents` is set isn't clean either. The manifest declares the middleware contract, and OpenClaw treats declared middleware that wasn't registered as missing: on each run it falls back to its plugin loader to look for it (`src/plugins/agent-tool-result-middleware-loader.ts`). What that costs isn't measured.
+
+So an enabled plugin with an empty `agents` list still applies the limits. To leave every agent's results as they are, disable the plugin.
+
 ## Failing open
 
-When middleware throws or returns malformed output, OpenClaw replaces the result with "Tool output unavailable due to post-processing error." So the plugin catches every error and returns `undefined`, which keeps the original result, and logs a warning. A failed save keeps the full result in context.
+When middleware throws or returns malformed output, OpenClaw replaces the result with "Tool output unavailable due to post-processing error." So the plugin catches every error and returns `undefined`, which keeps the result as OpenClaw passed it in (see [Every agent's results](#every-agents-results)), and logs a warning. A failed save keeps the full result in context.
 
 ## Tool Search
 

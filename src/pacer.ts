@@ -36,7 +36,7 @@ export interface OffloadConfig {
 }
 
 export interface PacerConfig {
-  /** Agent ids the pacer applies to. Empty (the default) means it does nothing until configured. */
+  /** Agent ids the pacer applies to. Empty (the default) paces no agent. */
   agents: string[];
   /** Tools whose results count as gathering and receive the status line. */
   gatherTools: string[];
