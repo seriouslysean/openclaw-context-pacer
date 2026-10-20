@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
+import { resolveAgentWorkspaceDir } from 'openclaw/plugin-sdk/agent-runtime';
 import { type MiddlewareHost, type PluginHost, createMiddleware, createSaveDir, hasConversationAccess, registerPacer, usageHooks, wrap } from '../src/index.ts';
 import { Pacer, resolveConfig } from '../src/pacer.ts';
 import { type TextResult, defined, direct, fetchPayload, viaToolCall } from './fixtures.ts';
@@ -50,11 +51,23 @@ async function apply(h: MiddlewareHost, e: ReturnType<typeof event>, agentId: st
 
 const offloadOn = { agents: ['researcher'], offload: { enabled: true } };
 
-/** Registers the pacer with a stand-in for OpenClaw's plugin API and returns what it registered. */
-function register(pluginConfig: Record<string, unknown>, config: PluginHost['config'] = {}, workspaceDir = '/srv/agent-workspace') {
+type Config = PluginHost['config'];
+
+/**
+ * Registers the pacer with a stand-in for OpenClaw's plugin API and returns what it registered. `config` is the
+ * snapshot taken at registration; `current` is the gateway's config later, after any hot reload.
+ */
+function register(
+  pluginConfig: Record<string, unknown>,
+  config: Config = {},
+  current: () => Config = () => config,
+  resolveWorkspace: (config: Config, agentId: string) => string = () => '/srv/agent-workspace',
+) {
   const hooks = new Map<string, unknown>();
-  const middleware: unknown[] = [];
+  const middleware: Parameters<PluginHost['registerAgentToolResultMiddleware']>[0][] = [];
+  const middlewareOptions: Parameters<PluginHost['registerAgentToolResultMiddleware']>[1][] = [];
   const warnings: string[] = [];
+  const runtime = { agent: { resolveAgentWorkspaceDir: resolveWorkspace }, config: { current } };
   const api: PluginHost = {
     config,
     pluginConfig,
@@ -62,13 +75,14 @@ function register(pluginConfig: Record<string, unknown>, config: PluginHost['con
     on: (hookName: string, handler: unknown) => {
       hooks.set(hookName, handler);
     },
-    registerAgentToolResultMiddleware: (handler) => {
+    registerAgentToolResultMiddleware: (handler, options) => {
       middleware.push(handler);
+      middlewareOptions.push(options);
     },
-    runtime: { agent: { resolveAgentWorkspaceDir: () => workspaceDir } },
+    runtime,
   };
   registerPacer(api);
-  return { hooks, middleware, warnings };
+  return { hooks, middleware, middlewareOptions, warnings };
 }
 
 test('a result for an agent that is not paced is left unchanged', async () => {
@@ -135,7 +149,7 @@ test('under workspaceAccess none, a large result is saved in the sandbox workspa
   const sandboxWs = await workspace();
   const sandboxed = { agents: { defaults: { sandbox: { mode: 'all', workspaceAccess: 'none' } } } };
   const { host: h, warnings } = host({ config: offloadOn });
-  h.saveDir = createSaveDir(sandboxed, () => agentWs, h.warn);
+  h.saveDir = createSaveDir(() => sandboxed, () => agentWs, h.warn);
   const original = viaToolCall('web_fetch', fetchPayload());
   const out = await createMiddleware(h)({ ...event('tool_call', original, { id: 'web_fetch', args: {} }), cwd: sandboxWs }, ctx('researcher'));
   const pointer = defined(texts(defined(out ? out.result : undefined)).at(-2));
@@ -149,7 +163,7 @@ test('an unsandboxed run with its own working directory keeps the result in cont
   const agentWs = await workspace();
   const taskDir = await workspace();
   const { host: h, warnings } = host({ config: offloadOn });
-  h.saveDir = createSaveDir({}, () => agentWs, h.warn);
+  h.saveDir = createSaveDir(() => ({}), () => agentWs, h.warn);
   const original = viaToolCall('web_fetch', fetchPayload());
   const out = await createMiddleware(h)({ ...event('tool_call', original, { id: 'web_fetch', args: {} }), cwd: taskDir }, ctx('researcher'));
   assert.deepEqual(defined(out ? out.result : undefined).content.slice(0, -1), original.content);
@@ -161,7 +175,7 @@ test('an unsandboxed run with its own working directory keeps the result in cont
 test('a skipped offload is logged once per agent and reason', () => {
   const warnings: string[] = [];
   const remote = { agents: { defaults: { sandbox: { mode: 'all', backend: 'ssh', workspaceAccess: 'rw' } } } };
-  const saveDir = createSaveDir(remote, () => '/srv/agent-workspace', (message) => warnings.push(message));
+  const saveDir = createSaveDir(() => remote, () => '/srv/agent-workspace', (message) => warnings.push(message));
   assert.equal(saveDir('researcher'), undefined);
   assert.equal(saveDir('researcher'), undefined);
   assert.equal(saveDir('helper'), undefined);
@@ -222,8 +236,46 @@ test('registration adds the middleware and the metadata hooks, and the conversat
   const plain = register({ agents: ['researcher'] });
   assert.deepEqual([...plain.hooks.keys()], ['model_call_started', 'model_call_ended']);
   assert.equal(plain.middleware.length, 1);
+  assert.deepEqual(plain.middlewareOptions, [{ runtimes: ['openclaw'] }]);
   const granted = register({ agents: ['researcher'] }, { plugins: { entries: { 'context-pacer': { hooks: { allowConversationAccess: true } } } } });
   assert.deepEqual([...granted.hooks.keys()], ['model_call_started', 'model_call_ended', 'llm_output', 'agent_end']);
+});
+
+test('a sandbox backend changed after registration is used for the next result', async () => {
+  const sandboxWs = await workspace();
+  const sandbox = (backend: string): Config => ({ agents: { defaults: { sandbox: { mode: 'all', backend, workspaceAccess: 'none' } } } });
+  let current = sandbox('docker');
+  const { middleware, warnings } = register(offloadOn, current, () => current);
+  const run = defined(middleware[0]);
+  const fetched = { ...event('tool_call', viaToolCall('web_fetch', fetchPayload()), { id: 'web_fetch', args: {} }), cwd: sandboxWs };
+  const onDocker = await run(fetched, ctx('researcher', 'run-1'));
+  assert.match(defined(texts(defined(onDocker ? onDocker.result : undefined)).at(-2)), /saved at \.context-pacer\//);
+  current = sandbox('ssh');
+  const onSsh = await run(fetched, ctx('researcher', 'run-2'));
+  assert.deepEqual(defined(onSsh ? onSsh.result : undefined).content.slice(0, -1), fetched.result.content);
+  assert.deepEqual(warnings, ['[context-pacer] offload skipped for agent "researcher": sandbox backend "ssh" may not see files saved on the gateway (needs docker or podman)']);
+});
+
+/** Freezes every object in `value`, as OpenClaw freezes the config `runtime.config.current()` returns. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    for (const child of Object.values(value)) {
+      deepFreeze(child);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+test("offload finds the agent workspace with OpenClaw's own resolver, from the frozen current config", async () => {
+  const ws = await workspace();
+  const current = deepFreeze<Config>({ agents: { entries: { researcher: { workspace: ws } } } });
+  const { middleware, warnings } = register(offloadOn, {}, () => current, resolveAgentWorkspaceDir);
+  const fetched = { ...event('tool_call', viaToolCall('web_fetch', fetchPayload()), { id: 'web_fetch', args: {} }), cwd: ws };
+  const out = await defined(middleware[0])(fetched, ctx('researcher'));
+  const saved = defined(/saved at (\S+): read it/.exec(defined(texts(defined(out ? out.result : undefined)).at(-2)))?.[1]);
+  assert.match(await readFile(join(ws, saved), 'utf8'), /Line 100 of the page body/);
+  assert.deepEqual(warnings, []);
 });
 
 test('the conversation hooks are used only when the operator grants conversation access', () => {

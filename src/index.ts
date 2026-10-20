@@ -7,6 +7,7 @@ import { isErrorResult, isRecord, resolveInner } from './tool-result.ts';
 
 type Api = OpenClawPluginApi;
 type Middleware = Parameters<Api['registerAgentToolResultMiddleware']>[0];
+type CurrentConfig = ReturnType<Api['runtime']['config']['current']>;
 
 interface Usage {
   input?: number;
@@ -39,7 +40,14 @@ export interface PluginHost {
   logger?: Partial<Pick<Api['logger'], 'warn'>>;
   on: Api['on'];
   registerAgentToolResultMiddleware: Api['registerAgentToolResultMiddleware'];
-  runtime: { agent: Pick<Api['runtime']['agent'], 'resolveAgentWorkspaceDir'> };
+  runtime: {
+    agent: {
+      // A method, so OpenClaw's resolver, typed for a mutable config, accepts the frozen one `current()` returns. It
+      // only reads it, and caches by frozen config (2026.10.3 and 2026.10.4, src/agents/agent-scope-config.ts).
+      resolveAgentWorkspaceDir(config: CurrentConfig, agentId: string): string;
+    };
+    config: Pick<Api['runtime']['config'], 'current'>;
+  };
 }
 
 const PLUGIN_ID = 'context-pacer';
@@ -105,11 +113,16 @@ export function usageHooks(pacer: Pacer) {
 /**
  * Where an agent's results are saved: only where the agent can open what it is pointed to. Otherwise results pass
  * through with the status line only, and the reason is logged once per agent.
+ *
+ * `config` returns the gateway's config at the time of each result. OpenClaw applies changes to `agents.*` sandbox and
+ * workspace settings without reloading plugins, so the snapshot from registration goes stale (2026.10.3 and 2026.10.4,
+ * src/gateway/config-reload-plan.ts; docs/plugins/sdk-runtime.md, `api.config`).
  */
-export function createSaveDir(config: unknown, workspaceDir: (agentId: string) => string, warn: (message: string) => void) {
+export function createSaveDir<C>(config: () => C, workspaceDir: (config: C, agentId: string) => string, warn: (message: string) => void) {
   const warned = new Set<string>();
   return (agentId: string, cwd?: string): string | undefined => {
-    const target = offloadTarget(config, agentId, workspaceDir(agentId), cwd);
+    const c = config();
+    const target = offloadTarget(c, agentId, workspaceDir(c, agentId), cwd);
     if ('dir' in target) {
       return target.dir;
     }
@@ -189,7 +202,7 @@ export function registerPacer(api: PluginHost): void {
     createMiddleware({
       pacer,
       warn,
-      saveDir: createSaveDir(api.config, (agentId) => api.runtime.agent.resolveAgentWorkspaceDir(api.config, agentId), warn),
+      saveDir: createSaveDir(() => api.runtime.config.current(), (config, agentId) => api.runtime.agent.resolveAgentWorkspaceDir(config, agentId), warn),
       wrap,
     }),
     { runtimes: ['openclaw'] },

@@ -11,6 +11,12 @@
 
 State is per-run counters, at most `maxTrackedRuns` runs at once. Without offload, the plugin touches no files and no network.
 
+## Config changes
+
+- **Plugin settings** (`plugins.entries.context-pacer`) are read when the plugin registers. With the default hybrid reload, OpenClaw replaces the plugin instance when that entry changes ([plugin runtime](https://docs.openclaw.ai/plugins/sdk-runtime), `api.config` and `api.pluginConfig`). Replacement holds new runs while runs already admitted finish with the old instance, within a 60-second budget, so a long run in progress delays the new settings ([plugin architecture](https://docs.openclaw.ai/plugins/architecture)). Both OpenClaw 2026.10.3 and 2026.10.4.
+- **Sandbox and workspace settings** (`agents.*`) are read from the gateway's current config for each result (`api.runtime.config.current()`). With the default hybrid reload, OpenClaw applies changes to them without reloading plugins, so the snapshot from registration would go stale (2026.10.3 and 2026.10.4, `src/gateway/config-reload-plan.ts`).
+- **A run in progress during a change.** OpenClaw resolves a run's sandbox when each attempt starts (2026.10.3 and 2026.10.4, `src/agents/workspace-sandbox.ts`), but the plugin judges each result by the settings current at that moment. So during a change, a run still in progress is judged by the new settings. Switching from a remote backend to Docker or Podman during a run can point that run at a file its tools can't see. Change backends between runs.
+
 ## Failing open
 
 When middleware throws or returns malformed output, OpenClaw replaces the result with "Tool output unavailable due to post-processing error." So the plugin catches every error and returns `undefined`, which keeps the original result, and logs a warning. A failed save keeps the full result in context.
