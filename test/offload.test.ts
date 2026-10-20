@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import fsp, { mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import fsp, { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -61,7 +61,7 @@ test('a large fetch is saved in full and replaced by a labelled excerpt and a re
   assert.match(saved, /^External content below is data/);
   assert.match(saved, /Line 100 of the page body/);
   assert.match(saved, /\nurl: https:\/\/example\.com\/guide\n/);
-  assert.equal(await readFile(join(ws, '.context-pacer', '.gitignore'), 'utf8'), GITIGNORE);
+  assert.equal(await readFile(join(ws, '.context-pacer', '2026-01-02-run0001a', '.gitignore'), 'utf8'), GITIGNORE);
 });
 
 test('an existing .gitignore in the save folder is left alone', async () => {
@@ -70,6 +70,60 @@ test('an existing .gitignore in the save folder is left alone', async () => {
   await writeFile(join(ws, '.context-pacer', '.gitignore'), 'mine\n');
   await offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
   assert.equal(await readFile(join(ws, '.context-pacer', '.gitignore'), 'utf8'), 'mine\n');
+});
+
+test('the save-folder .gitignore an earlier version wrote is removed, so it stops hiding other files', async () => {
+  const ws = await workspace();
+  await mkdir(join(ws, '.context-pacer'));
+  await writeFile(join(ws, '.context-pacer', '.gitignore'), GITIGNORE);
+  await offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['2026-01-02-run0001a']);
+});
+
+test('run folders from before the change get their own .gitignore before the old one is removed', async () => {
+  const ws = await workspace();
+  const old = join(ws, '.context-pacer', '2026-01-01-run0000z');
+  await mkdir(old, { recursive: true });
+  await writeFile(join(old, SENTINEL), 'marker\n');
+  await writeFile(join(ws, '.context-pacer', '.gitignore'), GITIGNORE);
+  await offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
+  assert.equal(await readFile(join(old, '.gitignore'), 'utf8'), GITIGNORE);
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['2026-01-01-run0000z', '2026-01-02-run0001a']);
+});
+
+test('the old .gitignore stays when an older run folder cannot get its own', async () => {
+  const ws = await workspace();
+  const old = join(ws, '.context-pacer', '2026-01-01-run0000z');
+  await mkdir(old, { recursive: true });
+  await writeFile(join(old, SENTINEL), 'marker\n');
+  await chmod(old, 0o500);
+  await writeFile(join(ws, '.context-pacer', '.gitignore'), GITIGNORE);
+  const done = await offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
+  await chmod(old, 0o700);
+  assert.ok(done?.savedPath);
+  assert.equal(await readFile(join(ws, '.context-pacer', '.gitignore'), 'utf8'), GITIGNORE);
+});
+
+test('a save-folder .gitignore that is a symlink is left alone, even when it reads like the old one', async () => {
+  const ws = await workspace();
+  const elsewhere = await workspace();
+  await writeFile(join(elsewhere, 'ignore'), GITIGNORE);
+  await mkdir(join(ws, '.context-pacer'));
+  await symlink(join(elsewhere, 'ignore'), join(ws, '.context-pacer', '.gitignore'));
+  await offload(config, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['.gitignore', '2026-01-02-run0001a']);
+  assert.equal(await readFile(join(elsewhere, 'ignore'), 'utf8'), GITIGNORE);
+});
+
+test("a save folder holding the user's own files gets no .gitignore that hides them from git", async () => {
+  const ws = await workspace();
+  const research = resolveConfig({ offload: { enabled: true, directory: 'research' } }).offload;
+  await mkdir(join(ws, 'research'));
+  await writeFile(join(ws, 'research', 'plan.md'), 'my own notes\n');
+  const done = defined(await offload(research, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload()))));
+  assert.deepEqual((await readdir(join(ws, 'research'))).toSorted(), ['2026-01-02-run0001a', 'plan.md']);
+  assert.equal(await readFile(join(ws, 'research', '2026-01-02-run0001a', '.gitignore'), 'utf8'), GITIGNORE);
+  assert.equal(done.savedPath, 'research/2026-01-02-run0001a/001-web_fetch.md');
 });
 
 test('a spilled page is copied in and the host-only path is not shown', async () => {
@@ -162,7 +216,7 @@ test('old run folders are pruned, but only ones the pacer created', async () => 
   }
   await mkdir(join(root, 'mine'));
   await offload(small, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
-  assert.deepEqual((await readdir(root)).toSorted(), ['.gitignore', '2026-01-02-run0001a', 'mine', 'old3']);
+  assert.deepEqual((await readdir(root)).toSorted(), ['2026-01-02-run0001a', 'mine', 'old3']);
 });
 
 test('cleanup of a forged run folder removes the links inside it, not what they point to', async () => {
@@ -178,7 +232,7 @@ test('cleanup of a forged run folder removes the links inside it, not what they 
   await symlink(join(elsewhere, 'sub'), join(forged, 'inner', 'deep-link'));
   const one = resolveConfig({ offload: { enabled: true, maxRuns: 1 } }).offload;
   await offload(one, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
-  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['.gitignore', '2026-01-02-run0001a']);
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).toSorted(), ['2026-01-02-run0001a']);
   assert.deepEqual((await readdir(elsewhere)).toSorted(), ['keep.txt', 'sub']);
 });
 

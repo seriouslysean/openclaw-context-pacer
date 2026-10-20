@@ -12,7 +12,7 @@ This is a solo project, so there's no response-time commitment.
 
 The plugin sees untrusted web content and, with offload on, writes files where an agent can read them. In scope is anything that:
 - **Writes outside the folder it should:** a saved file landing outside `<workspace>/<offload.directory>`, following a symlink, or overwriting an existing file. `<workspace>` is the agent workspace, or for a `none` or `ro` sandbox, the sandbox workspace its tools run in.
-- **Deletes the wrong thing:** cleanup removing a folder the plugin didn't create.
+- **Deletes the wrong thing:** cleanup removing a folder the plugin didn't create, or a `<offload.directory>/.gitignore` other than the unchanged one earlier builds wrote.
 - **Drops the untrusted-content label:** external content reaching the model, or a saved file, without OpenClaw's warning and markers.
 - **Shows the wrong agent's data:** a result changed for an agent that isn't listed in `agents`.
 - **Fails closed:** an error that replaces a tool result instead of leaving it unchanged.

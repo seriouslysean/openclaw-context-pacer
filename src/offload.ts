@@ -38,7 +38,11 @@ export interface Offloaded {
 
 /** Marks run folders this plugin created; cleanup never touches a folder without it. */
 export const SENTINEL = '.context-pacer-run';
-/** Keeps saved web content out of a workspace git backup, as OpenClaw does for its own staged inputs. */
+/**
+ * Written in every run folder this plugin creates, as OpenClaw puts one in each folder of staged inputs it creates
+ * (2026.10.3 and 2026.10.4, src/media/staged-inputs.ts). Never written in `directory`, which can hold the user's own
+ * files.
+ */
 export const GITIGNORE = '# Saved tool results from the context-pacer plugin; old run folders are deleted.\n*\n';
 const MAX_SPILL_BYTES = 10_000_000;
 
@@ -83,14 +87,48 @@ async function isMarked(workspace: Root, folder: string): Promise<boolean> {
   }
 }
 
-/** Leaves an existing file alone, including one the user wrote. */
-async function createIfAbsent(workspace: Root, path: string, text: string): Promise<void> {
+/** Leaves an existing file alone, including one the user wrote. With `mkdir` false, a missing folder stays missing. */
+async function createIfAbsent(workspace: Root, path: string, text: string, mkdir = true): Promise<void> {
   try {
-    await workspace.create(path, text, { private: true });
+    await workspace.create(path, text, { private: true, mkdir });
   } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'already-exists')) {
       throw error;
     }
+  }
+}
+
+/**
+ * Removes the blanket `.gitignore` earlier versions of this plugin wrote in `directory`. It must go because
+ * `directory` can hold the user's own files and `*` keeps git from adding them. Run folders those versions created
+ * have no `.gitignore` of their own, so each marked folder gets one first. Another run's save can prune a folder
+ * meanwhile, so the backfill never recreates one, and the file goes only once every folder has its own. The root
+ * API refuses symlinks, so a symlink there makes the read throw; any error (missing file, symlink, other) leaves
+ * the file alone so the save is not disrupted.
+ */
+async function removeLegacyGitignore(workspace: Root, directory: string): Promise<void> {
+  const path = `${directory}/.gitignore`;
+  try {
+    const bytes = await workspace.readBytes(path);
+    if (!Buffer.from(GITIGNORE).equals(bytes)) {
+      return;
+    }
+    const entries = await workspace.list(directory, { withFileTypes: true });
+    const backfill = await Promise.allSettled(
+      entries
+        .filter((entry) => entry.isDirectory && !entry.isSymbolicLink)
+        .map(async (entry) => {
+          const folder = `${directory}/${entry.name}`;
+          if (await isMarked(workspace, folder)) {
+            await createIfAbsent(workspace, `${folder}/.gitignore`, GITIGNORE, false);
+          }
+        }),
+    );
+    if (backfill.every((result) => result.status === 'fulfilled')) {
+      await workspace.remove(path);
+    }
+  } catch {
+    // leave the file alone
   }
 }
 
@@ -141,8 +179,9 @@ export async function offload(config: OffloadConfig, wrap: Wrap, req: OffloadReq
   await workspace.mkdir(runDir, { private: true });
   const marker = `${runDir}/${SENTINEL}`;
   if (!(await workspace.exists(marker))) {
-    await createIfAbsent(workspace, `${config.directory}/.gitignore`, GITIGNORE);
+    await createIfAbsent(workspace, `${runDir}/.gitignore`, GITIGNORE);
     await createIfAbsent(workspace, marker, 'Created by the context-pacer OpenClaw plugin; old run folders are deleted.\n');
+    await removeLegacyGitignore(workspace, config.directory);
     await prune(workspace, config.directory, config.maxRuns, req.folder);
   }
   const file = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}.md`;
