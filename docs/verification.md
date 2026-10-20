@@ -19,7 +19,7 @@
 - Without `hooks.allowConversationAccess`, OpenClaw blocks `llm_output` and `agent_end` for a non-bundled plugin and logs a warning for each. The plugin now registers them only when the grant is set.
 - A research run with offload on:
   - status lines reached the model, with a context share estimated from request size;
-  - large results were saved, with the `.gitignore` in place;
+  - large results were saved, with the `.gitignore` in place (at the time, one for the whole save folder; now one per run folder);
   - the agent opened a saved file with `read` from a Podman sandbox with `workspaceAccess: "rw"`, despite the files' 0600 mode;
   - no result was replaced by a post-processing error.
 - `model_call_ended.requestPayloadBytes` is populated for embedded runs. The estimate it gives was close to the reported prompt size early in a run.
