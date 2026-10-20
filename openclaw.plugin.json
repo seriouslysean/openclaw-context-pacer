@@ -127,7 +127,7 @@
             "type": "integer",
             "minimum": 1000000,
             "maximum": 500000000,
-            "description": "Most bytes saved per run; past this, results stay in context unchanged.",
+            "description": "Most bytes saved per run (per attempt with the conversation-access grant); past this, results stay in context unchanged.",
             "default": 25000000
           }
         }

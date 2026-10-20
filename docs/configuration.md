@@ -16,7 +16,7 @@ Config lives at `plugins.entries.context-pacer.config`. Anything missing or inva
 | `offload.excerptChars` | `4000` | Characters shown in place of an offloaded result (500–20,000, and at most `thresholdChars` − 1,000) |
 | `offload.directory` | `".context-pacer"` | Workspace-relative folder for saved results |
 | `offload.maxRuns` | `10` | Run folders kept in the directory (1–100) |
-| `offload.maxBytesPerRun` | `25000000` | Most bytes saved per run (1 MB–500 MB); past this, results stay in context |
+| `offload.maxBytesPerRun` | `25000000` | Most bytes saved per run (1 MB–500 MB); past this, results stay in context. With the conversation-access grant, it restarts when a run makes another attempt (see below) |
 
 OpenClaw has no convention for an agent's working notes; its `memory/` folder is durable memory that memory search indexes and later sessions load, so it isn't a default here.
 
@@ -51,7 +51,7 @@ openclaw config set plugins.entries.context-pacer.hooks.allowConversationAccess 
 openclaw plugins reload context-pacer
 ```
 
-OpenClaw gates the `llm_output` hook, which reports usage, and the `agent_end` hook behind this grant because their events also carry the prompt and the model's replies. The pacer reads only the token counts from them, and without the grant it doesn't register either hook. Without `agent_end`, finished runs aren't dropped at once; `maxRuns` still bounds how many are held.
+OpenClaw gates the `llm_output` hook, which reports usage, and the `agent_end` hook behind this grant because their events also carry the prompt and the model's replies. The pacer reads only the token counts from them, and without the grant it doesn't register either hook. OpenClaw sends `agent_end` at the end of an attempt, not once per run, so with the grant a run's counters, byte budget and save folder restart when the run makes another attempt, such as after a context overflow (OpenClaw 2026.10.3 and 2026.10.4, `src/agents/embedded-agent-runner/run/attempt-finalize.ts`). Without the grant, `maxTrackedRuns` bounds how many runs' counters are held.
 
 ## Where saved files go
 

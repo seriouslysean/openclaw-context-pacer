@@ -31,7 +31,10 @@ export interface OffloadConfig {
   directory: string;
   /** Run folders kept in the directory; older ones the pacer created are deleted. */
   maxRuns: number;
-  /** Most bytes saved per run; past this, results pass through unchanged. */
+  /**
+   * Most bytes saved per run (per attempt with the conversation-access grant); past this, results pass through
+   * unchanged.
+   */
   maxBytesPerRun: number;
 }
 
