@@ -39,7 +39,7 @@ openclaw gateway restart
 
 - `--force` confirms a source that isn't on ClawHub.
 - Installed plugins can rewrite tool results only when they're explicitly enabled, which is what `plugins enable` does.
-- The plugin does nothing until `agents` lists at least one agent id.
+- It paces no agent until `agents` lists at least one agent id. While it's enabled, OpenClaw applies its middleware limits to the tool results of every agent on its `openclaw` runtime, even with `agents` empty (see [How it works](docs/how-it-works.md#every-agents-results)). To leave them alone, disable the plugin.
 
 To check that it loaded, run `openclaw plugins inspect context-pacer --runtime --json`.
 
@@ -47,7 +47,7 @@ To turn it off, run `openclaw plugins disable context-pacer` and restart. Saved 
 
 ## Bounds
 
-- **Scoped:** only results from agents in `agents` change, and only results from `gatherTools`.
+- **Scoped:** the pacer changes only results from agents in `agents`, and only from `gatherTools`. Registering it makes OpenClaw cut any agent's tool result past its middleware limits, such as text over 100,000 characters (see [How it works](docs/how-it-works.md#every-agents-results)).
 - **Never blocks:** it doesn't veto, cap or rewrite tool calls.
 - **Fails open:** any error leaves the result as it was and logs a warning. If a save fails, the full result stays in context.
 - **Agnostic:** context share comes from the budget OpenClaw resolves for the run, so no model name or window size is hard-coded.

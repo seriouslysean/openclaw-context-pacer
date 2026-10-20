@@ -23,7 +23,7 @@
           "type": "string",
           "minLength": 1
         },
-        "description": "Agent ids to pace. Empty (the default) means the plugin does nothing until configured.",
+        "description": "Agent ids to pace. Empty (the default) paces no agent.",
         "default": []
       },
       "gatherTools": {
