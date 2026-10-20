@@ -25,22 +25,32 @@
   - no result was replaced by a post-processing error.
 - `model_call_ended.requestPayloadBytes` is populated for embedded runs. The estimate it gives was close to the reported prompt size early in a run.
 
+## Checked on a live gateway (OpenClaw 2026.10.4)
+
+On 2026-10-18, with the plugin at commit 13a7696 and the agent sandboxed with `workspaceAccess: "none"`:
+- Three research runs. Offload saved 12, 16 and 7 tool results into the sandbox workspace's `.context-pacer/` folder: three run folders holding 35 saved results. Each folder also gets a marker, and the build at that commit wrote one `.gitignore` for the whole save folder, so 39 files by design.
+- The agent read them back 7, 12 and 4 times.
+- The gateway log had no "offload skipped" line.
+- Peak prompts were 82.9K, 88.1K and 34.7K tokens.
+- The counts' source: a local harness read OpenClaw's session events for the three runs. Saved results are those carrying the pacer's saved-at line, read-backs are `read` calls into the run folder, and the peak is the largest prompt token count of any model call. The gateway log was checked only for "offload skipped" lines.
+
+So under `none`, the plugin saved under `event.cwd` into the workspace the agent's tools run in, and the agent called `read` on those files. The counts don't record whether each `read` succeeded.
+
 ## Not yet checked on a live gateway
 
-- Offload for unsandboxed agents. The plugin allows it there, but only an `rw` sandbox has been run live.
-- Offload under `workspaceAccess` `none` and `ro`. Read from OpenClaw's source and covered by unit tests only:
+- Offload for unsandboxed agents. The plugin allows it there, but only sandboxed agents have been run live: `rw` on 2026.10.3, `none` on 2026.10.4.
+- Offload under `workspaceAccess: "ro"`. Read from OpenClaw's source and covered by unit tests only:
   - that `event.cwd` is the sandbox workspace on a live gateway;
-  - that a file saved there shows up in the container;
-  - that the agent's `read` opens it, including from a read-only `ro` mount.
+  - that the agent's `read` opens a saved file from the read-only mount.
 - The skips for backends other than Docker and Podman, for an unsandboxed or `rw` run whose tools start outside the agent workspace, and for a sandbox a person's role requires under `mode: "off"`. Unit tests only.
-- Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. Only a Podman sandbox has been run live.
+- Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. Only a Podman `rw` sandbox (2026.10.3) has been seen reading them; the 2026-10-18 check counted `read` calls, not their results.
 - That a change to `agents.*` sandbox or workspace settings reaches the plugin through `api.runtime.config.current()` without a restart, and that a change to the plugin's entry replaces its instance. Read from OpenClaw's docs and source (2026.10.3 and 2026.10.4, `docs/plugins/sdk-runtime.md`, `src/gateway/config-reload-plan.ts`). The unit tests cover only that the pacer reads `current()` for each result.
 - That OpenClaw applies its middleware limits to every agent's results while the plugin is enabled. Read from source (2026.10.3 and 2026.10.4, `src/agents/harness/tool-result-middleware.ts`) and checked against the 2026.10.3 SDK's runner in a unit test; not seen on a live gateway. That a 20,000-character page in Chinese or Japanese crosses the `details` limit is worked out from the byte count, not seen on a live gateway.
 - What OpenClaw does on each run when a plugin declares tool-result middleware but registers none. Its loader falls back to loading the plugin (2026.10.3 and 2026.10.4, `src/plugins/agent-tool-result-middleware-loader.ts`); whether that load is cached, and what it costs, isn't checked.
 - Managed project worktrees. A session with one runs its tools in a private checkout, so the plugin saves there. Whether OpenClaw keeps, reconciles or publishes those files isn't checked.
 - Whether `llm_output` fires per model call or once per run, with the conversation-access grant. The request-size estimate covers the gap.
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
-- Whether agents read the saved files when they need more, or work from the excerpt alone.
+- Whether reading saved files back improves answers. In the three 2026.10.4 runs above, the agent did read them.
 
 ## Checking it on your gateway
 
