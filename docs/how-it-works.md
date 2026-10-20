@@ -7,7 +7,7 @@
 | `api.registerAgentToolResultMiddleware` | Rewrites a result after the tool runs and before the model sees it. Needs the manifest contract `agentToolResultMiddleware: ["openclaw"]` and explicit enablement ([host hooks](https://docs.openclaw.ai/plugins/sdk-overview/host-hooks)) |
 | `model_call_started`, `model_call_ended` | The run's `contextTokenBudget`, and a size estimate from `requestPayloadBytes` / 4, marked "(approx)". These are metadata hooks: no prompt or reply content ([hook reference](https://docs.openclaw.ai/plugins/hooks/reference)) |
 | `llm_output` | Reported prompt usage. Registered only when the operator grants `hooks.allowConversationAccess`, because the event also carries the conversation |
-| `agent_end` | Drops the run's counters. Registered only with the same grant; otherwise `maxTrackedRuns` bounds them |
+| `agent_end` | Drops the run's counters, byte budget and save folder at the end of an attempt, so they restart if the run retries. Registered only with the same grant; otherwise `maxTrackedRuns` bounds them |
 
 State is per-run counters, at most `maxTrackedRuns` runs at once. Without offload, the plugin touches no files and no network.
 

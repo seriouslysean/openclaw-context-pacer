@@ -51,6 +51,7 @@ So under `none`, the plugin saved under `event.cwd` into the workspace the agent
 - Whether `llm_output` fires per model call or once per run, with the conversation-access grant. The request-size estimate covers the gap.
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
 - Whether reading saved files back improves answers. In the three 2026.10.4 runs above, the agent did read them.
+- That `agent_end` fires at the end of an attempt, so a retried run's counters, byte budget and save folder restart. Read from source (2026.10.3 and 2026.10.4, `src/agents/embedded-agent-runner/run/attempt-finalize.ts`); not seen on a live gateway.
 
 ## Checking it on your gateway
 
