@@ -36,6 +36,18 @@ On 2026-10-18, with the plugin at commit 13a7696 and the agent sandboxed with `w
 
 So under `none`, the plugin saved under `event.cwd` into the workspace the agent's tools run in, and the agent called `read` on those files. The counts don't record whether each `read` succeeded.
 
+## Checked on a live gateway (OpenClaw 2026.10.5)
+
+On 2026-10-20, with the plugin at commit b40a9ae and the agent sandboxed with `workspaceAccess: "none"`, the same three research questions as the 2026-10-18 check:
+- Offload saved 19, 27 and 6 tool results. Each run folder holds its saved results, its marker and its own `.gitignore`; the save folder itself has none.
+- The save folder's `.gitignore` from the earlier build was removed once the existing run folders had their own (10 of 10).
+- The agent read saved files back 19, 0 and 2 times. All 21 reads succeeded.
+- The gateway log had no "offload skipped" line.
+- Peak prompts were 101.8K, 74.4K and 45.3K tokens.
+- Counted as on 2026-10-18, plus a read counts as failed when its tool result is an error.
+
+Not seen in this check: a change to `agents.*` settings reaching the plugin mid-run, since none changed during the runs.
+
 ## Not yet checked on a live gateway
 
 - Offload for unsandboxed agents. The plugin allows it there, but only sandboxed agents have been run live: `rw` on 2026.10.3, `none` on 2026.10.4.
@@ -43,7 +55,7 @@ So under `none`, the plugin saved under `event.cwd` into the workspace the agent
   - that `event.cwd` is the sandbox workspace on a live gateway;
   - that the agent's `read` opens a saved file from the read-only mount.
 - The skips for backends other than Docker and Podman, for an unsandboxed or `rw` run whose tools start outside the agent workspace, and for a sandbox a person's role requires under `mode: "off"`. Unit tests only.
-- Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. Only a Podman `rw` sandbox (2026.10.3) has been seen reading them; the 2026-10-18 check counted `read` calls, not their results.
+- Saved files are mode 0600 and owned by the gateway's user. A sandbox whose container user is a different host user may not be able to read them. A Podman `rw` sandbox (2026.10.3) and a `none` sandbox (2026.10.5) have been seen reading them; other container users are unchecked.
 - That a change to `agents.*` sandbox or workspace settings reaches the plugin through `api.runtime.config.current()` without a restart, and that a change to the plugin's entry replaces its instance. Read from OpenClaw's docs and source (2026.10.3 and 2026.10.4, `docs/plugins/sdk-runtime.md`, `src/gateway/config-reload-plan.ts`). The unit tests cover only that the pacer reads `current()` for each result.
 - That OpenClaw applies its middleware limits to every agent's results while the plugin is enabled. Read from source (2026.10.3 and 2026.10.4, `src/agents/harness/tool-result-middleware.ts`) and checked against the 2026.10.3 SDK's runner in a unit test; not seen on a live gateway. That a 20,000-character page in Chinese or Japanese crosses the `details` limit is worked out from the byte count, not seen on a live gateway.
 - What OpenClaw does on each run when a plugin declares tool-result middleware but registers none. Its loader falls back to loading the plugin (2026.10.3 and 2026.10.4, `src/plugins/agent-tool-result-middleware-loader.ts`); whether that load is cached, and what it costs, isn't checked.
