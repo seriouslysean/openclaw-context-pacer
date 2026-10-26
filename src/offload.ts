@@ -29,6 +29,8 @@ export interface OffloadRequest {
   inner: ToolResult;
   /** Asks the pacer for room within the run's byte limit. */
   reserve: (bytes: number) => boolean;
+  /** Folders of runs the pacer still tracks; cleanup never deletes them, so their saved paths stay readable. */
+  live: ReadonlySet<string>;
 }
 
 export interface Offloaded {
@@ -65,8 +67,8 @@ export function excerpt(text: string, max: number): string {
   return text.slice(0, cut > max * 0.8 ? cut : max);
 }
 
-/** Keeps the newest `maxRuns` folders this plugin created in `directory`, plus the current one. */
-async function prune(workspace: Root, directory: string, maxRuns: number, current: string): Promise<void> {
+/** Keeps the newest `maxRuns` folders this plugin created in `directory`, counting the current one, plus every live one. */
+async function prune(workspace: Root, directory: string, maxRuns: number, current: string, live: ReadonlySet<string>): Promise<void> {
   const entries = await workspace.list(directory, { withFileTypes: true });
   const folders = entries.filter((entry) => entry.isDirectory && !entry.isSymbolicLink && entry.name !== current);
   const marked = await Promise.all(
@@ -74,7 +76,10 @@ async function prune(workspace: Root, directory: string, maxRuns: number, curren
   );
   const ours = marked.filter((entry) => entry !== undefined).toSorted((a, b) => b.mtimeMs - a.mtimeMs);
   await Promise.all(
-    ours.slice(Math.max(0, maxRuns - 1)).map((old) => workspace.remove(`${directory}/${old.name}`, { recursive: true, force: true })),
+    ours
+      .slice(Math.max(0, maxRuns - 1))
+      .filter((old) => !live.has(old.name))
+      .map((old) => workspace.remove(`${directory}/${old.name}`, { recursive: true, force: true })),
   );
 }
 
@@ -182,7 +187,7 @@ export async function offload(config: OffloadConfig, wrap: Wrap, req: OffloadReq
     await createIfAbsent(workspace, `${runDir}/.gitignore`, GITIGNORE);
     await createIfAbsent(workspace, marker, 'Created by the context-pacer OpenClaw plugin; old run folders are deleted.\n');
     await removeLegacyGitignore(workspace, config.directory);
-    await prune(workspace, config.directory, config.maxRuns, req.folder);
+    await prune(workspace, config.directory, config.maxRuns, req.folder, req.live);
   }
   const file = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}.md`;
   // `create` fails rather than overwrite anything already at that path.

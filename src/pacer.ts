@@ -223,6 +223,17 @@ export class Pacer {
     return s.folder;
   }
 
+  /** Save folders of the runs still tracked. Without `agent_end`, a run counts until `maxTrackedRuns` drops it. */
+  liveFolders(): Set<string> {
+    const folders = new Set<string>();
+    for (const s of this.runs.values()) {
+      if (s.folder !== undefined) {
+        folders.add(s.folder);
+      }
+    }
+    return folders;
+  }
+
   /** Reserves room for a saved file within the run's byte limit; false means don't save it. */
   reserveBytes(runId: string, bytes: number): boolean {
     const s = this.state(runId);

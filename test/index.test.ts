@@ -326,3 +326,18 @@ test('the conversation hooks are used only when the operator grants conversation
   assert.equal(hasConversationAccess({}), false);
   assert.equal(hasConversationAccess(undefined), false);
 });
+
+test("a new run's cleanup keeps the folders of runs still in progress", async () => {
+  const ws = await workspace();
+  const { host: h } = host({ config: { ...offloadOn, offload: { enabled: true, maxRuns: 1 } }, saveDir: () => ws });
+  const fetch = (runId: string) =>
+    createMiddleware(h)(event('tool_call', viaToolCall('web_fetch', fetchPayload()), { id: 'web_fetch', args: {} }), ctx('researcher', runId));
+  const savedAt = (out: Awaited<ReturnType<typeof fetch>>) => defined(/saved at (\S+): read it/.exec(defined(texts(defined(out ? out.result : undefined)).at(-2)))?.[1]);
+  const drizzt = savedAt(await fetch('drizzt-run'));
+  await fetch('bruenor-run');
+  assert.match(await readFile(join(ws, drizzt), 'utf8'), /Line 100 of the page body/);
+  h.pacer.end('drizzt-run');
+  h.pacer.end('bruenor-run');
+  await fetch('catti-brie-run');
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).map((name) => name.slice(11)), ['cattibri']);
+});
