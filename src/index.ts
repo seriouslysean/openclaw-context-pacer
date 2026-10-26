@@ -167,6 +167,7 @@ export function createMiddleware(host: MiddlewareHost): Middleware {
             original: event.result,
             inner: inner.result,
             reserve: (bytes) => pacer.reserveBytes(runId, bytes),
+            live: pacer.liveFolders(),
           });
           if (done) {
             result = { ...event.result, content: done.content };

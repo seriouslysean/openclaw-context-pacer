@@ -25,7 +25,7 @@ const always = () => true;
 function request(workspaceDir: string, name: string, original: { content: unknown; details: unknown }, index = 1) {
   const wrapped = typeof original.details === 'object' && original.details !== null && 'tool' in original.details;
   const inner = resolveInner(wrapped ? 'tool_call' : name, { id: name, args: {} }, original);
-  return { workspaceDir, folder: '2026-01-02-run0001a', index, name: inner.name, original, inner: inner.result ?? original, reserve: always };
+  return { workspaceDir, folder: '2026-01-02-run0001a', index, name: inner.name, original, inner: inner.result ?? original, reserve: always, live: new Set<string>() };
 }
 
 test('a small result passes unchanged', async () => {
@@ -217,6 +217,20 @@ test('old run folders are pruned, but only ones the pacer created', async () => 
   await mkdir(join(root, 'mine'));
   await offload(small, wrap, request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())));
   assert.deepEqual((await readdir(root)).toSorted(), ['2026-01-02-run0001a', 'mine', 'old3']);
+});
+
+test('cleanup leaves the folder of a live run, however old', async () => {
+  const ws = await workspace();
+  const small = resolveConfig({ offload: { enabled: true, maxRuns: 2 } }).offload;
+  const root = join(ws, '.context-pacer');
+  for (const [i, name] of ['old1', 'old2', 'old3'].entries()) {
+    await mkdir(join(root, name), { recursive: true });
+    await writeFile(join(root, name, SENTINEL), '');
+    const t = new Date(Date.UTC(2026, 0, 1 + i));
+    await utimes(join(root, name), t, t);
+  }
+  await offload(small, wrap, { ...request(ws, 'web_fetch', viaToolCall('web_fetch', fetchPayload())), live: new Set(['old1']) });
+  assert.deepEqual((await readdir(root)).toSorted(), ['2026-01-02-run0001a', 'old1', 'old3']);
 });
 
 test('cleanup of a forged run folder removes the links inside it, not what they point to', async () => {
