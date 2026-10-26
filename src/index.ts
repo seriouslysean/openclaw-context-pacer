@@ -98,8 +98,9 @@ export function usageHooks(pacer: Pacer) {
       }
     },
     // `usage` is the sum over every model call of the attempt, so it overstates the prompt once a run calls the model
-    // more than once. The last reply carries the last call's own usage (OpenClaw 2026.10.7,
-    // `completeEmbeddedAttemptResult` in dist/builtin-openclaw-*.mjs passes `getUsageTotals()` as `usage`).
+    // more than once. `lastAssistant`, the transcript's last assistant message, carries one call's own usage (OpenClaw
+    // 2026.10.7, dist/builtin-openclaw-*.mjs: `completeEmbeddedAttemptResult` passes `getUsageTotals()` as `usage`;
+    // `captureStreamSnapshot` picks `lastAssistant`).
     llmOutput(event: Ctx & { usage?: Usage; lastAssistant?: unknown }, ctx: Ctx): void {
       const runId = event?.runId ?? ctx?.runId;
       if (runId && pacer.applies(ctx?.agentId)) {

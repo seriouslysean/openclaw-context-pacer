@@ -19,8 +19,7 @@ First version, built and tested against OpenClaw 2026.10.3.
 
 - **Config changes:** the sandbox and workspace settings that decide where results are saved were read once, when the plugin registered. OpenClaw applies changes to `agents.*` sandbox and workspace settings without reloading plugins, so a changed sandbox backend or workspace access went unseen until a restart. They're now read from the current config for each result.
 - **`.gitignore`:** the plugin wrote a `.gitignore` containing `*` into `offload.directory`, so git stopped adding new files of the user's own there. Each run folder now gets its own instead. When it sets up a new run folder, the plugin deletes the one an earlier build wrote in `offload.directory`, but only if its contents are unchanged, after giving the run folders those builds created a `.gitignore` of their own; one you've edited stays.
-
-- **Reported usage:** the prompt size was read from `llm_output`'s `usage`, which OpenClaw sums over every model call of an attempt. A run that called the model several times reported a multiple of its real prompt, so a retried attempt could be told to stop gathering early. It's now read from the last call's reply.
+- **Reported usage:** the prompt size was read from `llm_output`'s `usage`, which OpenClaw sums over every model call of an attempt. After several calls it reported a multiple of the real prompt. `agent_end` usually clears the value right after, but where it doesn't follow, such as a `before_agent_finalize` revision, the run's next status lines showed the inflated share and could say to stop gathering early. It's now read from the transcript's last assistant message.
 
 ### Known limits
 
