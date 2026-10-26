@@ -11,7 +11,7 @@
   - where saves go for each sandbox mode, workspace access and backend, given the working directory a run reports;
   - the leak scan;
   - OpenClaw's own middleware runner, from the SDK, cutting an unpaced agent's oversized result once it is given the pacer's middleware (the test calls the runner directly, not OpenClaw's plugin loader).
-- **Typecheck** against the OpenClaw 2026.10.3 plugin SDK, in CI.
+- **Typecheck** against the OpenClaw 2026.10.5 plugin SDK (the `openclaw` devDependency), in CI. `openclaw.build` in `package.json` names that same version; `peerDependencies` and `openclaw.compat` keep the 2026.10.3 floor, the oldest version checked on a live gateway.
 - **Replay** of 247 stored `web_search` and `web_fetch` results from one research agent on 2026.10.3 through offload with the default settings: 0 errors. What the model saw fell from 2.88 million characters to 1.02 million. That's size only, not answer quality.
 
 ## Checked on a live gateway (OpenClaw 2026.10.3)
