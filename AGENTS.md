@@ -2,6 +2,12 @@
 
 Rules for working in this repo.
 
+- Install: `npm ci --ignore-scripts --no-audit --no-fund` (Node 24 or newer, per `package.json` `engines`).
+- Gate before a PR: `npm run lint && npm run typecheck && npm test`, the same three steps `.github/workflows/test.yml` runs.
+- Where things live: `src/` plugin code, `test/` tests, `docs/` guides (start with `docs/how-it-works.md`; contribution steps in `docs/CONTRIBUTING.md`).
+
+Rules:
+
 1. Never block, cap or rewrite a tool call; only what the model sees after the tool has run may change.
 2. Fail open: every error path returns `undefined` so OpenClaw keeps the original result, because a thrown error or malformed output replaces the result with an error notice.
 3. Keep OpenClaw's untrusted-content warning and markers on every excerpt and saved file of external content.
