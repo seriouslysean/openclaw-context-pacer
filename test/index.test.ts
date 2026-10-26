@@ -221,8 +221,28 @@ test('reported usage counts cached prompt tokens and replaces the estimate', () 
   const pacer = new Pacer(resolveConfig({ agents: ['researcher'] }));
   const hooks = usageHooks(pacer);
   hooks.modelCallEnded({ runId: 'r1', contextTokenBudget: 100_000, requestPayloadBytes: 160_000 }, { agentId: 'researcher' });
-  hooks.llmOutput({ runId: 'r1', usage: { input: 5_000, cacheRead: 20_000, cacheWrite: 5_000 } }, { agentId: 'researcher' });
+  const lastCall = { input: 5_000, output: 400, cacheRead: 20_000, cacheWrite: 5_000 };
+  hooks.llmOutput({ runId: 'r1', usage: lastCall, lastAssistant: { role: 'assistant', usage: lastCall } }, { agentId: 'researcher' });
   assert.match(defined(pacer.onToolResult('r1', 'web_fetch', {})), /context about 30% of budget\.$/);
+});
+
+test("an attempt's summed usage is not read as its prompt size; the last call's is", () => {
+  const pacer = new Pacer(resolveConfig({ agents: ['researcher'] }));
+  const hooks = usageHooks(pacer);
+  hooks.modelCallStarted({ runId: 'r1', contextTokenBudget: 100_000 }, { agentId: 'researcher' });
+  // Three calls of one attempt: OpenClaw sends their sum as `usage` and the last reply, with its own usage, as `lastAssistant`.
+  const attemptTotal = { input: 15_000, output: 1_200, cacheRead: 60_000, cacheWrite: 15_000 };
+  const lastCall = { input: 5_000, output: 400, cacheRead: 30_000, cacheWrite: 5_000 };
+  hooks.llmOutput({ runId: 'r1', usage: attemptTotal, lastAssistant: { role: 'assistant', usage: lastCall } }, { agentId: 'researcher' });
+  assert.match(defined(pacer.onToolResult('r1', 'web_fetch', {})), /context about 40% of budget\.$/);
+});
+
+test('an attempt total without a last reply leaves the request-size estimate in place', () => {
+  const pacer = new Pacer(resolveConfig({ agents: ['researcher'] }));
+  const hooks = usageHooks(pacer);
+  hooks.modelCallEnded({ runId: 'r1', contextTokenBudget: 100_000, requestPayloadBytes: 160_000 }, { agentId: 'researcher' });
+  hooks.llmOutput({ runId: 'r1', usage: { input: 15_000, cacheRead: 60_000, cacheWrite: 15_000 } }, { agentId: 'researcher' });
+  assert.match(defined(pacer.onToolResult('r1', 'web_fetch', {})), /context about 40% of budget \(approx\)\.$/);
 });
 
 test("agent_end drops the run's counters", () => {

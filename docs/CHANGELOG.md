@@ -20,6 +20,8 @@ First version, built and tested against OpenClaw 2026.10.3.
 - **Config changes:** the sandbox and workspace settings that decide where results are saved were read once, when the plugin registered. OpenClaw applies changes to `agents.*` sandbox and workspace settings without reloading plugins, so a changed sandbox backend or workspace access went unseen until a restart. They're now read from the current config for each result.
 - **`.gitignore`:** the plugin wrote a `.gitignore` containing `*` into `offload.directory`, so git stopped adding new files of the user's own there. Each run folder now gets its own instead. When it sets up a new run folder, the plugin deletes the one an earlier build wrote in `offload.directory`, but only if its contents are unchanged, after giving the run folders those builds created a `.gitignore` of their own; one you've edited stays.
 
+- **Reported usage:** the prompt size was read from `llm_output`'s `usage`, which OpenClaw sums over every model call of an attempt. A run that called the model several times reported a multiple of its real prompt, so a retried attempt could be told to stop gathering early. It's now read from the last call's reply.
+
 ### Known limits
 
 - **Every agent's tool results:** while the plugin is enabled, OpenClaw checks the tool results of every agent on its `openclaw` runtime against its middleware limits and cuts what's past them, such as text over 100,000 characters, not only for the agents in `agents`. OpenClaw 2026.10.4 offers no way to scope this; see [How it works](how-it-works.md#every-agents-results).
