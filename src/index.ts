@@ -52,11 +52,13 @@ export interface PluginHost {
 
 const PLUGIN_ID = 'context-pacer';
 
-function promptTokens(usage: Usage | undefined): number | undefined {
-  if (!usage) {
+/** Prompt tokens of one model call: fresh input plus cached reads and writes. */
+function promptTokens(usage: unknown): number | undefined {
+  if (!isRecord(usage)) {
     return undefined;
   }
-  const total = (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+  const count = (key: keyof Usage) => (typeof usage[key] === 'number' && Number.isFinite(usage[key]) ? usage[key] : 0);
+  const total = count('input') + count('cacheRead') + count('cacheWrite');
   return total > 0 ? total : undefined;
 }
 
@@ -95,10 +97,15 @@ export function usageHooks(pacer: Pacer) {
         pacer.recordUsage(runId, event?.contextTokenBudget ?? ctx?.contextTokenBudget, Math.ceil(bytes / 4), true);
       }
     },
-    llmOutput(event: Ctx & { usage?: Usage }, ctx: Ctx): void {
+    // `usage` is the sum over every model call of the attempt, so it overstates the prompt once a run calls the model
+    // more than once. `lastAssistant`, the transcript's last assistant message, carries one call's own usage (OpenClaw
+    // 2026.10.7, dist/builtin-openclaw-*.mjs: `completeEmbeddedAttemptResult` passes `getUsageTotals()` as `usage`;
+    // `captureStreamSnapshot` picks `lastAssistant`).
+    llmOutput(event: Ctx & { usage?: Usage; lastAssistant?: unknown }, ctx: Ctx): void {
       const runId = event?.runId ?? ctx?.runId;
       if (runId && pacer.applies(ctx?.agentId)) {
-        pacer.recordUsage(runId, event?.contextTokenBudget ?? ctx?.contextTokenBudget, promptTokens(event?.usage));
+        const last = event?.lastAssistant;
+        pacer.recordUsage(runId, event?.contextTokenBudget ?? ctx?.contextTokenBudget, promptTokens(isRecord(last) ? last.usage : undefined));
       }
     },
     agentEnd(event: { runId?: string }, ctx: Ctx): void {
