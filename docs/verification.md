@@ -12,7 +12,7 @@
   - the leak scan;
   - OpenClaw's own middleware runner, from the SDK, cutting an unpaced agent's oversized result once it is given the pacer's middleware (the test calls the runner directly, not OpenClaw's plugin loader).
 - **Typecheck** against the plugin SDK of the `openclaw` devDependency (2026.10.5), in CI. Dependabot moves it ahead of the floor.
-- **Version metadata**: `openclaw.build`, `openclaw.compat` and `peerDependencies` all name 2026.10.3, the version last checked on a live gateway. `test/package.test.ts` fails if they disagree. When the plugin is checked on a newer gateway, all of them move to it together.
+- **Version metadata**: `openclaw.build`, `openclaw.compat` and `peerDependencies` all name 2026.10.3, the version last checked on a live gateway. When the plugin is checked on a newer gateway, all of them move to it together.
 - **Replay** of 247 stored `web_search` and `web_fetch` results from one research agent on 2026.10.3 through offload with the default settings: 0 errors. What the model saw fell from 2.88 million characters to 1.02 million. That's size only, not answer quality.
 
 ## Checked on a live gateway (OpenClaw 2026.10.3)
