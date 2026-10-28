@@ -34,3 +34,9 @@ jobs:
 
       - name: tests
         run: npm test
+
+      # OpenClaw installs run npm with --ignore-scripts, so the committed dist/ is what runs
+      - name: dist is current
+        run: |
+          npm run build
+          test -z "$(git status --porcelain -- dist)" || { git status --short -- dist; echo 'dist/ is out of date: run npm run build and commit it.' >&2; exit 1; }

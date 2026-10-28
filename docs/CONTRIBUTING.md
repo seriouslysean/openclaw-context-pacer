@@ -9,7 +9,10 @@ npm ci --ignore-scripts
 npm run lint
 npm run typecheck
 npm test
+npm run build
 ```
+
+Commit `dist/` with any change to `src/`; CI fails when it doesn't match a fresh build.
 
 `npm test` fails below 80% line, 85% branch or 80% function coverage of `src/`.
 
