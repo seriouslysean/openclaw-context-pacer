@@ -28,15 +28,16 @@ Nothing is dropped: the agent can `read` the rest when it needs it. Offload appl
 
 ## Install
 
-From a checkout:
+Pinned to a tag or commit:
 
 ```sh
-openclaw plugins install --link --force /path/to/openclaw-context-pacer
+openclaw plugins install git:github.com/seriouslysean/openclaw-context-pacer@<tag or commit> --force --accept-capabilities
 openclaw plugins enable context-pacer
 openclaw config set plugins.entries.context-pacer.config '{"agents":["<agent id>"],"offload":{"enabled":true}}' --strict-json
 openclaw gateway restart
 ```
 
+- OpenClaw loads the committed `dist/` through `openclaw.runtimeExtensions`, from a git install, a copy, a load path or `--link` alike (`docs/plugins/sdk-entrypoints/package-entries.md:36-38`, 2026.10.8), checked on 2026.10.8: an install runs npm without scripts, so nothing is built then, and a change to `src/` runs only after `npm run build`.
 - `--force` confirms a source that isn't on ClawHub.
 - Installed plugins can rewrite tool results only when they're explicitly enabled, which is what `plugins enable` does.
 - It paces no agent until `agents` lists at least one agent id. While it's enabled, OpenClaw applies its middleware limits to the tool results of every agent on its `openclaw` runtime, even with `agents` empty (see [How it works](docs/how-it-works.md#every-agents-results)). To leave them alone, disable the plugin.
@@ -68,7 +69,10 @@ Requires Node 24.16 or later.
 ```sh
 npm ci --ignore-scripts
 npm run lint && npm run typecheck && npm test
+npm run build
 ```
+
+Commit `dist/` with any change to `src/`; CI fails when it doesn't match a fresh build.
 
 See [CONTRIBUTING.md](docs/CONTRIBUTING.md).
 

@@ -13,6 +13,7 @@
   - OpenClaw's own middleware runner, from the SDK, cutting an unpaced agent's oversized result once it is given the pacer's middleware (the test calls the runner directly, not OpenClaw's plugin loader).
 - **Typecheck** against the OpenClaw 2026.10.3 plugin SDK, in CI.
 - **Replay** of 247 stored `web_search` and `web_fetch` results from one research agent on 2026.10.3 through offload with the default settings: 0 errors. What the model saw fell from 2.88 million characters to 1.02 million. That's size only, not answer quality.
+- **Installs in OpenClaw 2026.10.8:** in an isolated state directory (`OPENCLAW_STATE_DIR`, `OPENCLAW_CONFIG_PATH`), `plugins install git:file://<checkout>@<commit> --force --accept-capabilities`, and the same from a checkout path, then `plugins inspect context-pacer --runtime --json` reports `status: loaded` from `dist/index.js` with the `model_call_started` and `model_call_ended` hooks. Before `dist/` was committed, the git install failed: "requires compiled runtime output for TypeScript entry ./src/index.ts".
 
 ## Checked on a live gateway (OpenClaw 2026.10.3)
 
@@ -64,6 +65,7 @@ Not seen in this check: a change to `agents.*` settings reaching the plugin mid-
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
 - Whether reading saved files back improves answers. In the three 2026.10.4 runs above, the agent did read them.
 - That `agent_end` fires at the end of an attempt, so a retried run's counters, byte budget and save folder restart. Read from source (2026.10.3 and 2026.10.4, `src/agents/embedded-agent-runner/run/attempt-finalize.ts`); not seen on a live gateway.
+- **Keeping the folders of runs in progress when cleaning up** (#45) and **reading `llm_output`'s prompt size from the last call, not the attempt total** (#46): unit-tested, not yet run on a live gateway.
 
 ## Checking it on your gateway
 

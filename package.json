@@ -21,6 +21,7 @@
     "node": ">=24.16"
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "typecheck": "tsc -p tsconfig.json",
@@ -39,6 +40,9 @@
     "extensions": [
       "./src/index.ts"
     ],
+    "runtimeExtensions": [
+      "./dist/index.js"
+    ],
     "compat": {
       "pluginApi": ">=2026.10.3",
       "minGatewayVersion": "2026.10.3"
@@ -47,5 +51,10 @@
       "openclawVersion": "2026.10.3",
       "pluginSdkVersion": "2026.10.3"
     }
-  }
+  },
+  "files": [
+    "dist/",
+    "src/",
+    "openclaw.plugin.json"
+  ]
 }
