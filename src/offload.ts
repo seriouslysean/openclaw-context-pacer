@@ -7,6 +7,7 @@
  * operation below it goes through OpenClaw's root-bounded file API (`root` from the plugin SDK), which refuses a
  * symlink at any point on the path, including one swapped in after a check.
  */
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { root } from 'openclaw/plugin-sdk/security-runtime';
 import type { OffloadConfig } from './pacer.ts';
@@ -54,10 +55,15 @@ function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** `<YYYY-MM-DD>-<first 8 letters and digits of the run id>`, using the gateway's local date. */
+/**
+ * `<YYYY-MM-DD>-<first 8 letters and digits of the run id>-<8 hex digits of its SHA-256>`, using the gateway's local
+ * date. The hash is needed because OpenClaw run ids can share a long prefix, such as `talk-realtime-consult-<uuid>`
+ * (2026.10.7, realtime-session-harness and gateway talk handlers).
+ */
 export function runFolder(runId: string, now: Date): string {
   const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  return `${date}-${runId.replaceAll(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'run'}`;
+  const hash = createHash('sha256').update(runId).digest('hex').slice(0, 8);
+  return `${date}-${runId.replaceAll(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'run'}-${hash}`;
 }
 
 /** Cuts at the last line break inside the limit when one is reasonably close, so the excerpt ends cleanly. */
