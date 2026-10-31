@@ -65,6 +65,7 @@ Not seen in this check: a change to `agents.*` settings reaching the plugin mid-
 - Whether `model_call_started` carries `runId` and the agent id for embedded runs.
 - Whether reading saved files back improves answers. In the three 2026.10.4 runs above, the agent did read them.
 - That `agent_end` fires at the end of an attempt, so a retried run's counters, byte budget and save folder restart. Read from source (2026.10.3 and 2026.10.4, `src/agents/embedded-agent-runner/run/attempt-finalize.ts`); not seen on a live gateway.
+- That a retried attempt keeps the run id. Read from the built package (2026.10.7, `dist/embedded-agent-*.mjs`: the attempt loop reuses `params.runId`); not seen on a live gateway. **Naming a retried attempt's files apart from the earlier attempt's** (#64) is unit-tested only.
 - **Keeping the folders of runs in progress when cleaning up** (#45) and **reading `llm_output`'s prompt size from the last call, not the attempt total** (#46): unit-tested, not yet run on a live gateway.
 
 ## Checking it on your gateway
