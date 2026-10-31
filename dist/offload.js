@@ -20,6 +20,8 @@ export const SENTINEL = '.context-pacer-run';
  */
 export const GITIGNORE = '# Saved tool results from the context-pacer plugin; old run folders are deleted.\n*\n';
 const MAX_SPILL_BYTES = 10_000_000;
+// The agent can write in the run folder, so taken names are bounded rather than searched without end.
+const MAX_NAME_TRIES = 100;
 function pad(n) {
     return String(n).padStart(2, '0');
 }
@@ -61,16 +63,38 @@ async function isMarked(workspace, folder) {
         return false;
     }
 }
+function alreadyExists(error) {
+    return error instanceof Error && 'code' in error && error.code === 'already-exists';
+}
 /** Leaves an existing file alone, including one the user wrote. With `mkdir` false, a missing folder stays missing. */
 async function createIfAbsent(workspace, path, text, mkdir = true) {
     try {
         await workspace.create(path, text, { private: true, mkdir });
     }
     catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'already-exists')) {
+        if (!alreadyExists(error)) {
             throw error;
         }
     }
+}
+/**
+ * Creates `<base>.md`, or `<base>-2.md` and so on when that name is taken. With the conversation-access grant,
+ * `agent_end` resets the run's counters, and a retried attempt keeps the run id and so the same folder (OpenClaw
+ * 2026.10.7, dist/embedded-agent-*.mjs: each pass of the attempt loop reuses `params.runId`). `create` fails rather
+ * than overwrite.
+ */
+async function createUnique(workspace, dir, base, text, n = 1) {
+    const path = `${dir}/${base}${n === 1 ? '' : `-${n}`}.md`;
+    try {
+        await workspace.create(path, text, { private: true });
+        return path;
+    }
+    catch (error) {
+        if (!alreadyExists(error) || n >= MAX_NAME_TRIES) {
+            throw error;
+        }
+    }
+    return createUnique(workspace, dir, base, text, n + 1);
 }
 /**
  * Removes the blanket `.gitignore` earlier versions of this plugin wrote in `directory`. It must go because
@@ -152,10 +176,8 @@ export async function offload(config, wrap, req) {
         await removeLegacyGitignore(workspace, config.directory);
         await prune(workspace, config.directory, config.maxRuns, req.folder, req.live);
     }
-    const file = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}.md`;
-    // `create` fails rather than overwrite anything already at that path.
-    await workspace.create(`${runDir}/${file}`, saved, { private: true });
-    const savedPath = `${runDir}/${file}`;
+    const base = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}`;
+    const savedPath = await createUnique(workspace, runDir, base, saved);
     const shown = excerpt(body, config.excerptChars);
     const fullPage = spillText === undefined ? '' : `, plus the full page (${spillText.length.toLocaleString('en-US')} characters)`;
     const pointer = `[pacer] Showing the first ${shown.length.toLocaleString('en-US')} of ${body.length.toLocaleString('en-US')} characters${fullPage}. The full result is saved at ${savedPath}: read it with offset and limit if you need more.`;

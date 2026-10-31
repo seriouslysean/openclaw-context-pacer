@@ -55,7 +55,7 @@ OpenClaw gates the `llm_output` hook, which reports usage, and the `agent_end` h
 
 ## Where saved files go
 
-Offloaded results are saved under `<workspace>/<offload.directory>/<YYYY-MM-DD>-<run>-<hash>/<NNN>-<tool>.md`, where `<workspace>` is the workspace the agent's tools run in. The date is the gateway's local date when the run first saves, `<run>` is the first eight letters and digits of OpenClaw's run id, and `<hash>` is the first eight hex digits of the run id's SHA-256, so runs whose ids share a prefix get separate folders.
+Offloaded results are saved under `<workspace>/<offload.directory>/<YYYY-MM-DD>-<run>-<hash>/<NNN>-<tool>.md`, where `<workspace>` is the workspace the agent's tools run in. The date is the gateway's local date when the run first saves, `<run>` is the first eight letters and digits of OpenClaw's run id, and `<hash>` is the first eight hex digits of the run id's SHA-256, so runs whose ids share a prefix get separate folders. `<NNN>` counts the run's gathering results; when that name is taken, such as by an earlier attempt of the same run, the file is named `<NNN>-<tool>-2.md`, then `-3`, and so on.
 
 - **In the workspace the agent's tools run in.**
 
