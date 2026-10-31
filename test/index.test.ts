@@ -339,5 +339,5 @@ test("a new run's cleanup keeps the folders of runs still in progress", async ()
   h.pacer.end('drizzt-run');
   h.pacer.end('bruenor-run');
   await fetch('catti-brie-run');
-  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).map((name) => name.slice(11)), ['cattibri']);
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).map((name) => name.slice(11, 19)), ['cattibri']);
 });

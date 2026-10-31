@@ -21,7 +21,7 @@ The line escalates in two steps:
 **Offload (optional, off by default).** A large result is saved to a file in the workspace the agent's tools run in. The model gets an excerpt and the file's path in its place:
 
 ```text
-[pacer] Showing the first 3,962 of 6,337 characters. The full result is saved at .context-pacer/2026-10-15-3f9c1a2b/004-web_fetch.md: read it with offset and limit if you need more.
+[pacer] Showing the first 3,962 of 6,337 characters. The full result is saved at .context-pacer/2026-10-15-3f9c1a2b-9d41e07c/004-web_fetch.md: read it with offset and limit if you need more.
 ```
 
 Nothing is dropped: the agent can `read` the rest when it needs it. Offload applies to unsandboxed agents and to Docker or Podman sandboxes. With `workspaceAccess` `"none"` (OpenClaw's default) or `"ro"`, files go in the sandbox workspace rather than the agent workspace. In a replay of 247 stored results from one research agent, offload cut the text the model saw by about 65%. That measures size only, not answer quality.
