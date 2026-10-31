@@ -23,6 +23,10 @@ First version, built and tested against OpenClaw 2026.10.3.
 - **`.gitignore`:** the plugin wrote a `.gitignore` containing `*` into `offload.directory`, so git stopped adding new files of the user's own there. Each run folder now gets its own instead. When it sets up a new run folder, the plugin deletes the one an earlier build wrote in `offload.directory`, but only if its contents are unchanged, after giving the run folders those builds created a `.gitignore` of their own; one you've edited stays.
 - **Cleanup of live runs:** when a run saved its first file, cleanup kept only the newest `offload.maxRuns` folders by modification time, so a run still in progress could lose its folder to newer runs and its pointers named deleted files. Cleanup now skips the folders of runs the pacer still tracks.
 - **Reported usage:** the prompt size was read from `llm_output`'s `usage`, which OpenClaw sums over every model call of an attempt. After several calls it reported a multiple of the real prompt. `agent_end` usually clears the value right after, but where it doesn't follow, such as a `before_agent_finalize` revision, the run's next status lines showed the inflated share and could say to stop gathering early. It's now read from the transcript's last assistant message.
+- **Run tracking:** past `maxTrackedRuns`, the run tracked longest was dropped, even one still saving, so another run's cleanup could delete its folder and its next save restarted numbering at 1. The run idle longest is dropped instead.
+- **Byte limit after failed saves:** a save that failed still counted toward `offload.maxBytesPerRun`, so repeated failures could stop later saves that would succeed. A failed save now gives its bytes back.
+- **Excerpt cut:** an excerpt cut without a nearby line break could end on half of a UTF-16 surrogate pair, such as an emoji. The cut now steps back one character.
+- **Failed note writes:** a note write that returned an error still reset the count since the last note, so the nudge to write one stopped. A failed write no longer counts as a note.
 
 ### Known limits
 

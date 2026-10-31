@@ -29,6 +29,8 @@ export interface OffloadRequest {
   inner: ToolResult;
   /** Asks the pacer for room within the run's byte limit. */
   reserve: (bytes: number) => boolean;
+  /** Gives back what `reserve` took when the save fails. */
+  release: (bytes: number) => void;
   /** Folders of runs the pacer still tracks; cleanup never deletes them, so their saved paths stay readable. */
   live: ReadonlySet<string>;
 }
@@ -64,7 +66,12 @@ export function excerpt(text: string, max: number): string {
     return text;
   }
   const cut = text.lastIndexOf('\n', max);
-  return text.slice(0, cut > max * 0.8 ? cut : max);
+  if (cut > max * 0.8) {
+    return text.slice(0, cut);
+  }
+  // A lone high surrogate is malformed UTF-16, which a provider may reject.
+  const high = text.charCodeAt(max - 1);
+  return text.slice(0, high >= 0xd800 && high <= 0xdbff ? max - 1 : max);
 }
 
 /** Keeps the newest `maxRuns` folders this plugin created in `directory`, counting the current one, plus every live one. */
@@ -179,19 +186,24 @@ export async function offload(config: OffloadConfig, wrap: Wrap, req: OffloadReq
     return undefined;
   }
 
-  const workspace = await root(req.workspaceDir);
   const runDir = `${config.directory}/${req.folder}`;
-  await workspace.mkdir(runDir, { private: true });
-  const marker = `${runDir}/${SENTINEL}`;
-  if (!(await workspace.exists(marker))) {
-    await createIfAbsent(workspace, `${runDir}/.gitignore`, GITIGNORE);
-    await createIfAbsent(workspace, marker, 'Created by the context-pacer OpenClaw plugin; old run folders are deleted.\n');
-    await removeLegacyGitignore(workspace, config.directory);
-    await prune(workspace, config.directory, config.maxRuns, req.folder, req.live);
-  }
   const file = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}.md`;
-  // `create` fails rather than overwrite anything already at that path.
-  await workspace.create(`${runDir}/${file}`, saved, { private: true });
+  try {
+    const workspace = await root(req.workspaceDir);
+    await workspace.mkdir(runDir, { private: true });
+    const marker = `${runDir}/${SENTINEL}`;
+    if (!(await workspace.exists(marker))) {
+      await createIfAbsent(workspace, `${runDir}/.gitignore`, GITIGNORE);
+      await createIfAbsent(workspace, marker, 'Created by the context-pacer OpenClaw plugin; old run folders are deleted.\n');
+      await removeLegacyGitignore(workspace, config.directory);
+      await prune(workspace, config.directory, config.maxRuns, req.folder, req.live);
+    }
+    // `create` fails rather than overwrite anything already at that path.
+    await workspace.create(`${runDir}/${file}`, saved, { private: true });
+  } catch (error) {
+    req.release(bytes);
+    throw error;
+  }
 
   const savedPath = `${runDir}/${file}`;
   const shown = excerpt(body, config.excerptChars);
