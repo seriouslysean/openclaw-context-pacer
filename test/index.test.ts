@@ -359,5 +359,21 @@ test("a new run's cleanup keeps the folders of runs still in progress", async ()
   h.pacer.end('drizzt-run');
   h.pacer.end('bruenor-run');
   await fetch('catti-brie-run');
-  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).map((name) => name.slice(11)), ['cattibri']);
+  assert.deepEqual((await readdir(join(ws, '.context-pacer'))).map((name) => name.slice(11, 19)), ['cattibri']);
+});
+
+test("a retried attempt saves its results without colliding with the earlier attempt's files", async () => {
+  const ws = await workspace();
+  const { host: h, warnings } = host({ config: offloadOn, saveDir: () => ws });
+  const fetch = async (url: string) => {
+    const out = await createMiddleware(h)(event('tool_call', viaToolCall('web_fetch', { ...fetchPayload(), url }), { id: 'web_fetch', args: {} }), ctx('researcher'));
+    return defined(/saved at (\S+): read it/.exec(defined(texts(defined(out ? out.result : undefined)).at(-2)))?.[1]);
+  };
+  const first = await fetch('https://example.com/first');
+  usageHooks(h.pacer).agentEnd({}, ctx('researcher'));
+  const retry = await fetch('https://example.com/retry');
+  assert.deepEqual(warnings, []);
+  assert.notEqual(retry, first);
+  assert.match(await readFile(join(ws, first), 'utf8'), /example\.com\/first/);
+  assert.match(await readFile(join(ws, retry), 'utf8'), /example\.com\/retry/);
 });

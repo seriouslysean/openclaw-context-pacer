@@ -263,8 +263,17 @@ test('excerpt ends on a line break when one is close', () => {
   assert.equal(excerpt(`${'a'.repeat(19)}\u{1F600}tail`, 20), 'a'.repeat(19));
 });
 
-test('run folders are named by local date and the first eight letters and digits of the run id', () => {
-  assert.equal(runFolder('5fc4f317-5382-4bf0-9e4b-30f3da6ef7cc', new Date(2026, 9, 15, 23, 59)), '2026-10-15-5fc4f317');
-  assert.equal(runFolder('ab-cd/ef', new Date(2026, 0, 2)), '2026-01-02-abcdef');
-  assert.equal(runFolder('---', new Date(2026, 0, 2)), '2026-01-02-run');
+test('run folders are named by local date and the start of the run id', () => {
+  assert.match(runFolder('5fc4f317-5382-4bf0-9e4b-30f3da6ef7cc', new Date(2026, 9, 15, 23, 59)), /^2026-10-15-5fc4f317-[0-9a-f]{8}$/);
+  assert.match(runFolder('ab-cd/ef', new Date(2026, 0, 2)), /^2026-01-02-abcdef-[0-9a-f]{8}$/);
+  assert.match(runFolder('---', new Date(2026, 0, 2)), /^2026-01-02-run-[0-9a-f]{8}$/);
+});
+
+test('runs whose ids share a prefix get separate folders', () => {
+  const day = new Date(2026, 0, 2);
+  const a = runFolder('talk-realtime-consult-0b6f2c1e-1d2a-4c55-9a43-2f1e8d7c6b5a', day);
+  const b = runFolder('talk-realtime-consult-7e3a9d40-5b8c-4f12-8e67-9c0d1a2b3c4d', day);
+  const c = runFolder('talk-realtime-relay-consult-0b6f2c1e-1d2a-4c55-9a43-2f1e8d7c6b5a', day);
+  assert.equal(new Set([a, b, c]).size, 3);
+  assert.equal(runFolder('talk-realtime-consult-0b6f2c1e-1d2a-4c55-9a43-2f1e8d7c6b5a', day), a);
 });

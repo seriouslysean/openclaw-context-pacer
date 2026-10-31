@@ -7,6 +7,7 @@
  * operation below it goes through OpenClaw's root-bounded file API (`root` from the plugin SDK), which refuses a
  * symlink at any point on the path, including one swapped in after a check.
  */
+import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { root } from 'openclaw/plugin-sdk/security-runtime';
 import { isExternal, readable, spillPath, textOf } from './tool-result.js';
@@ -19,13 +20,20 @@ export const SENTINEL = '.context-pacer-run';
  */
 export const GITIGNORE = '# Saved tool results from the context-pacer plugin; old run folders are deleted.\n*\n';
 const MAX_SPILL_BYTES = 10_000_000;
+// The agent can write in the run folder, so taken names are bounded rather than searched without end.
+const MAX_NAME_TRIES = 100;
 function pad(n) {
     return String(n).padStart(2, '0');
 }
-/** `<YYYY-MM-DD>-<first 8 letters and digits of the run id>`, using the gateway's local date. */
+/**
+ * `<YYYY-MM-DD>-<first 8 letters and digits of the run id>-<8 hex digits of its SHA-256>`, using the gateway's local
+ * date. The hash is needed because OpenClaw run ids can share a long prefix, such as `talk-realtime-consult-<uuid>`
+ * (2026.10.7, realtime-session-harness and gateway talk handlers).
+ */
 export function runFolder(runId, now) {
     const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    return `${date}-${runId.replaceAll(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'run'}`;
+    const hash = createHash('sha256').update(runId).digest('hex').slice(0, 8);
+    return `${date}-${runId.replaceAll(/[^A-Za-z0-9]/g, '').slice(0, 8) || 'run'}-${hash}`;
 }
 /** Cuts at the last line break inside the limit when one is reasonably close, so the excerpt ends cleanly. */
 export function excerpt(text, max) {
@@ -60,16 +68,38 @@ async function isMarked(workspace, folder) {
         return false;
     }
 }
+function alreadyExists(error) {
+    return error instanceof Error && 'code' in error && error.code === 'already-exists';
+}
 /** Leaves an existing file alone, including one the user wrote. With `mkdir` false, a missing folder stays missing. */
 async function createIfAbsent(workspace, path, text, mkdir = true) {
     try {
         await workspace.create(path, text, { private: true, mkdir });
     }
     catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'already-exists')) {
+        if (!alreadyExists(error)) {
             throw error;
         }
     }
+}
+/**
+ * Creates `<base>.md`, or `<base>-2.md` and so on when that name is taken. With the conversation-access grant,
+ * `agent_end` resets the run's counters, and a retried attempt keeps the run id and so the same folder (OpenClaw
+ * 2026.10.7, dist/embedded-agent-*.mjs: each pass of the attempt loop reuses `params.runId`). `create` fails rather
+ * than overwrite.
+ */
+async function createUnique(workspace, dir, base, text, n = 1) {
+    const path = `${dir}/${base}${n === 1 ? '' : `-${n}`}.md`;
+    try {
+        await workspace.create(path, text, { private: true });
+        return path;
+    }
+    catch (error) {
+        if (!alreadyExists(error) || n >= MAX_NAME_TRIES) {
+            throw error;
+        }
+    }
+    return createUnique(workspace, dir, base, text, n + 1);
 }
 /**
  * Removes the blanket `.gitignore` earlier versions of this plugin wrote in `directory`. It must go because
@@ -142,7 +172,8 @@ export async function offload(config, wrap, req) {
         return undefined;
     }
     const runDir = `${config.directory}/${req.folder}`;
-    const file = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}.md`;
+    const base = `${String(req.index).padStart(3, '0')}-${req.name.replaceAll(/[^A-Za-z0-9_-]/g, '')}`;
+    let savedPath;
     try {
         const workspace = await root(req.workspaceDir);
         await workspace.mkdir(runDir, { private: true });
@@ -153,14 +184,12 @@ export async function offload(config, wrap, req) {
             await removeLegacyGitignore(workspace, config.directory);
             await prune(workspace, config.directory, config.maxRuns, req.folder, req.live);
         }
-        // `create` fails rather than overwrite anything already at that path.
-        await workspace.create(`${runDir}/${file}`, saved, { private: true });
+        savedPath = await createUnique(workspace, runDir, base, saved);
     }
     catch (error) {
         req.release(bytes);
         throw error;
     }
-    const savedPath = `${runDir}/${file}`;
     const shown = excerpt(body, config.excerptChars);
     const fullPage = spillText === undefined ? '' : `, plus the full page (${spillText.length.toLocaleString('en-US')} characters)`;
     const pointer = `[pacer] Showing the first ${shown.length.toLocaleString('en-US')} of ${body.length.toLocaleString('en-US')} characters${fullPage}. The full result is saved at ${savedPath}: read it with offset and limit if you need more.`;
